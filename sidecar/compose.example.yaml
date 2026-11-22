@@ -1,0 +1,62 @@
+# Talaria — example compose deployment (sidecar + env contract).
+#
+# This file shows the SHAPE of a deployment, not a turnkey one — adapt names,
+# networks and the proxy to your setup. What is fixed by the design:
+#
+#   1. Thunderbird (desktop) runs the commonpost addon
+#      (https://github.com/commonpost/thunderbird-mcp) with its HTTP server
+#      enabled and a stable token configured (addon preference:
+#      extensions.commonpost-mcp.stableAuthToken).
+#   2. The sidecar must be able to reach that server. In our own deployment
+#      the sidecar shares Thunderbird's network namespace
+#      (`network_mode: "service:thunderbird"`), which makes the addon's
+#      loopback server reachable without exposing it on any network. Any
+#      placement that can reach the addon host works — keep the addon OFF
+#      public interfaces (the addon itself refuses public listen addresses).
+#   3. The sidecar is the only thing you expose, and only behind an
+#      authenticating proxy (Cloudflare Access, Authelia, oauth2-proxy,
+#      VPN/tailnet, …). It has no application-level auth.
+#
+# Secrets come from an .env file next to this compose file (never committed):
+#   COMMONPOST_MCP_TOKEN        the addon's stable token
+#   TBWEB_VAPID_PUBLIC_KEY      VAPID public key  (npx web-push generate-vapid-keys)
+#   TBWEB_VAPID_PRIVATE_KEY     VAPID private key — keep server-side only
+
+services:
+  talaria:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    volumes:
+      # Point this at your checkout of this repository (sidecar/ — the
+      # service source; the built SPA lives in sidecar/public/, see the
+      # repository README). Read-only: the container never writes back.
+      - ./sidecar:/app:ro
+    # The source is mounted read-only, so dependencies are installed into a
+    # scratch copy before starting.
+    command: >
+      sh -c "cp -r /app /tmp/talaria &&
+             cd /tmp/talaria &&
+             npm ci --omit=dev &&
+             exec node src/index.js"
+    environment:
+      # --- required ------------------------------------------------------
+      COMMONPOST_MCP_TOKEN: ${COMMONPOST_MCP_TOKEN:?set in .env}
+      # --- web push (optional; push disabled without both keys) ----------
+      TBWEB_VAPID_PUBLIC_KEY: ${TBWEB_VAPID_PUBLIC_KEY:-}
+      TBWEB_VAPID_PRIVATE_KEY: ${TBWEB_VAPID_PRIVATE_KEY:-}
+      TBWEB_PUSH_SUBJECT: ${TBWEB_PUSH_SUBJECT:-mailto:you@example.com}
+      # --- placement -----------------------------------------------------
+      # With a shared netns (recommended) the addon's loopback server is
+      # reachable as-is. Otherwise point the probe range at whatever host
+      # runs the addon — and keep that route private.
+      COMMONPOST_PORTS: 8780-8789
+      PORT: 8942
+    restart: unless-stopped
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }
+    labels:
+      # Your ingress here — a tunnel label, a reverse-proxy network alias,
+      # or a published port reachable only from your private network.
+      # talaria.example → http://talaria:8942  (behind authentication!)

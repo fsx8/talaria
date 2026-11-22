@@ -1,0 +1,19 @@
+{
+  "name": "tbweb",
+  "version": "0.1.0",
+  "description": "Talaria sidecar: reverse-proxies the commonpost JSON-RPC addon API, serves the SPA, streams SSE live events, sends web push.",
+  "type": "module",
+  "main": "src/index.js",
+  "private": true,
+  "license": "MPL-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "fastify": "^5.12.8",
+    "web-push": "^3.6.7"
+  }
+}

@@ -1,0 +1,525 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/*
+ * The Registrar — Talaria's visual world.
+ *
+ * Light theme = "day register": pale cool paper with a barely-there drift,
+ * iron-ink navy-black text, faint blue rulings only where data is tabular,
+ * one registrar-red accent reserved for the masthead rule and unread marks.
+ * Dark theme = "night register": the night-desk chart plate — deep ink navy
+ * ground, chalk ink. State changes flip in two-frame steps (≤120 ms); no
+ * long eases anywhere.
+ */
+
+@import "tailwindcss";
+
+/* ---------- theme tokens ---------- */
+
+:root {
+  /* paper + ink */
+  --paper: #f3f2ee;
+  --paper-drift-1: rgba(59, 79, 112, 0.05);
+  --paper-drift-2: rgba(168, 58, 50, 0.035);
+  --sheet: #fbfaf7;
+  --sheet-shadow: rgba(28, 36, 48, 0.1);
+  --ink: #1c2430;
+  --ink-2: #45526a;
+  --ink-3: #5a6880;
+  --invoked-ink: #fbfaf7; /* text on accent fills */
+
+  /* rulings */
+  --rule: #ddd9ce;
+  --rule-blue: #ccd6e4;
+  --rule-strong: #c2bdb0;
+
+  /* the registrar red — masthead rule, unread marks, record errors */
+  --accent: #a83a32;
+  --accent-soft: rgba(168, 58, 50, 0.09);
+
+  /* state colours (sit on top of the world palette, carry meaning only) */
+  --link: #2d5da8;
+  --focus: #2d5da8;
+  --pass: #2e7d4f;
+  --warn: #a66a1e;
+  --fail: #a83a32;
+
+  /* pressed paper (selection, hover) */
+  --tint: #e9e5da;
+  --tint-soft: #efede6;
+
+  /* account code chips (stable per account, legend = the account list) */
+  --acct-0: #2d5da8;
+  --acct-1: #7a4fa3;
+  --acct-2: #2e7d4f;
+  --acct-3: #a66a1e;
+  --acct-4: #a83a32;
+  --acct-5: #3d7f8f;
+}
+
+[data-theme="dark"] {
+  --paper: #10161e;
+  --paper-drift-1: rgba(122, 168, 230, 0.05);
+  --paper-drift-2: rgba(210, 92, 79, 0.04);
+  --sheet: #17202c;
+  --sheet-shadow: rgba(0, 0, 0, 0.42);
+  --ink: #e4e8ef;
+  --ink-2: #a9b4c4;
+  --ink-3: #7d8ca1;
+  --invoked-ink: #10161e;
+
+  --rule: #232e3d;
+  --rule-blue: #243347;
+  --rule-strong: #334054;
+
+  --accent: #d25c4f;
+  --accent-soft: rgba(210, 92, 79, 0.14);
+
+  --link: #8ab0e0;
+  --focus: #8ab0e0;
+  --pass: #58a97e;
+  --warn: #d9a03c;
+  --fail: #d25c4f;
+
+  --tint: #1d2735;
+  --tint-soft: #182130;
+
+  --acct-0: #8ab0e0;
+  --acct-1: #b79ad8;
+  --acct-2: #58a97e;
+  --acct-3: #d9a03c;
+  --acct-4: #d25c4f;
+  --acct-5: #6fb0c0;
+}
+
+/* ---------- tailwind theme mapping ---------- */
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-sheet: var(--sheet);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-rule: var(--rule);
+  --color-rule-blue: var(--rule-blue);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-link: var(--link);
+  --color-tint: var(--tint);
+  --color-tint-soft: var(--tint-soft);
+  --color-invoked: var(--invoked-ink);
+  --font-sans: "Archivo Variable", "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-reading: "Golos Text Variable", "Golos Text", var(--font-sans);
+}
+
+/* ---------- base ---------- */
+
+html {
+  height: 100%;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#app {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  isolation: isolate;
+}
+
+/* The quiet drift: paper is never flat white (raise from the plate-section
+ * challenger) — two large, faint tints breathe into opposite corners. */
+#app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(52rem 36rem at 8% -6%, var(--paper-drift-1), transparent 68%),
+    radial-gradient(46rem 30rem at 96% 104%, var(--paper-drift-2), transparent 70%);
+  pointer-events: none;
+}
+
+/* ---------- browser surfaces (themed, not defaulted) ---------- */
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+input,
+textarea {
+  caret-color: var(--accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule-strong) transparent;
+}
+
+/* the search input's native cancel duplicates our own clear button */
+input[type="search"]::-webkit-search-cancel-button {
+  display: none;
+  appearance: none;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--rule-strong);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- motion: two-frame steps, ≤120 ms, no long eases ---------- */
+
+@keyframes flip-step {
+  0% {
+    opacity: 0;
+    transform: translateY(-45%);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.flip-step {
+  animation: flip-step 110ms steps(2, end);
+}
+
+@keyframes arrive-step {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.arrive-step {
+  animation: arrive-step 100ms steps(2, end);
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.skeleton {
+  background: var(--tint);
+  border-radius: 3px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- app shell layout ---------- */
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 1fr;
+  flex: 1;
+  min-height: 0;
+}
+
+/* phone (<768): one pane at a time, bottom nav owns the rest */
+@media (max-width: 767px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* tablet (768–1023): list + reader, rail becomes a drawer */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .app-shell {
+    grid-template-columns: minmax(320px, 2fr) 3fr;
+  }
+}
+
+/* desktop (≥1024): the full three-pane register */
+@media (min-width: 1024px) {
+  .app-shell {
+    grid-template-columns: 264px minmax(360px, 420px) 1fr;
+  }
+}
+
+/* ---------- the record sheet (reader) ---------- */
+
+.record-sheet {
+  background: var(--sheet);
+  box-shadow:
+    0 1px 2px var(--sheet-shadow),
+    0 10px 28px var(--sheet-shadow);
+}
+
+/* ---------- reader typography (sanitized markdown output) ---------- */
+
+.register-prose {
+  font-family: var(--font-reading);
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: var(--ink);
+  max-width: 68ch;
+}
+
+.register-prose > *:first-child {
+  margin-top: 0;
+}
+
+.register-prose p {
+  margin: 0 0 1em;
+}
+
+.register-prose h1,
+.register-prose h2,
+.register-prose h3,
+.register-prose h4,
+.register-prose h5,
+.register-prose h6 {
+  font-family: var(--font-sans);
+  font-weight: 650;
+  line-height: 1.25;
+  margin: 1.6em 0 0.6em;
+  letter-spacing: -0.01em;
+}
+
+.register-prose h1 {
+  font-size: 1.45em;
+}
+.register-prose h2 {
+  font-size: 1.28em;
+}
+.register-prose h3 {
+  font-size: 1.12em;
+}
+.register-prose h4,
+.register-prose h5,
+.register-prose h6 {
+  font-size: 1em;
+}
+
+.register-prose a {
+  color: var(--link);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.register-prose a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.register-prose ul,
+.register-prose ol {
+  margin: 0 0 1em;
+  padding-left: 1.5em;
+}
+
+.register-prose ul {
+  list-style: disc;
+}
+
+.register-prose ol {
+  list-style: decimal;
+}
+
+.register-prose li {
+  margin-bottom: 0.3em;
+}
+
+.register-prose li::marker {
+  color: var(--ink-3);
+}
+
+.register-prose blockquote {
+  margin: 0 0 1em;
+  padding: 0.1em 0 0.1em 1em;
+  border-left: 1px solid var(--rule-strong);
+  color: var(--ink-2);
+}
+
+.register-prose blockquote p {
+  margin-bottom: 0.4em;
+}
+
+.register-prose code {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 0.875em;
+  background: var(--tint-soft);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.08em 0.35em;
+}
+
+.register-prose pre {
+  background: var(--tint-soft);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.9em 1em;
+  overflow-x: auto;
+  margin: 0 0 1em;
+}
+
+.register-prose pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.85em;
+  line-height: 1.55;
+}
+
+.register-prose table {
+  border-collapse: collapse;
+  margin: 0 0 1em;
+  font-variant-numeric: tabular-nums;
+}
+
+.register-prose th,
+.register-prose td {
+  border: 1px solid var(--rule);
+  padding: 0.35em 0.7em;
+  text-align: left;
+}
+
+.register-prose th {
+  background: var(--tint-soft);
+  font-weight: 600;
+}
+
+.register-prose hr {
+  border: none;
+  border-top: 1px solid var(--rule);
+  margin: 1.6em 0;
+}
+
+.register-prose img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+}
+
+/* tabular figures everywhere data is counted or dated */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* thread transcript prose: the reading voice one step smaller */
+.thread-prose {
+  font-family: var(--font-reading);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  max-width: 68ch;
+}
+
+.thread-prose > *:first-child {
+  margin-top: 0;
+}
+
+.thread-prose p {
+  margin: 0 0 0.6em;
+}
+
+.thread-prose a {
+  color: var(--link);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.thread-prose ul,
+.thread-prose ol {
+  margin: 0 0 0.6em;
+  padding-left: 1.4em;
+}
+
+.thread-prose pre {
+  background: var(--tint-soft);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.7em 0.9em;
+  overflow-x: auto;
+  margin: 0 0 0.6em;
+  font-size: 0.85em;
+}
+
+.thread-prose blockquote {
+  margin: 0 0 0.6em;
+  padding: 0.1em 0 0.1em 1em;
+  border-left: 1px solid var(--rule-strong);
+  color: var(--ink-2);
+}
+
+/* agate: the small tabular line under list rows / headers */
+.agate {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* account color chip */
+.account-chip {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: none;
+}
+
+/* unread dot — red, and always paired with heavier ink (never color alone) */
+.unread-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+
+/* the masthead rule under the wordmark */
+.masthead-rule {
+  display: block;
+  height: 2px;
+  width: 100%;
+  background: var(--accent);
+}
