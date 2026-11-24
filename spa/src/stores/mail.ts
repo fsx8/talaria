@@ -744,9 +744,14 @@ export const useMailStore = defineStore("mail", {
       this.lastMailEvent = event;
       this.lastMailEventAt = Date.now();
       // The connect-time hello (and every SSE reconnect) only seeds the
-      // folio — refreshing on it duplicated the boot search and gated
-      // first paint behind a second full scan (Round-2 perf fix).
-      if (event.isHello) return;
+      // folio — refreshing the register on it duplicated the boot search
+      // and gated first paint behind a second full scan (Round-2 perf fix).
+      // The tallies ARE re-checked though (headers-only, cheap): the SSE
+      // baseline must reconcile into the rail, which the folio now reads.
+      if (event.isHello) {
+        void useAccountsStore().refreshUnread();
+        return;
+      }
       // Re-file the current page promptly; the sidecar's own poll already
       // throttled the change, so this only costs one search call.
       this.scheduleRefresh(1_200);

@@ -127,7 +127,84 @@ result.steps.discardRowGone = !(await page.isVisible('[role=option]:has-text("Mo
 await page.screenshot({ path: "../docs/local/screenshots/stage3/stage3-mock-compose.png" });
 result.steps["stage3-mock-compose"] = "captured";
 
-/* 6. settings: the composer toggle exists and works in mock */
+/* 6. the close-guard must never lie: type → immediate Close (the blur
+ *    autosave races the close path; the draft saves, no failure dialog) */
+await page.keyboard.press("g");
+await page.keyboard.press("i");
+await page.waitForTimeout(1200);
+await page.keyboard.press("c");
+await page.waitForSelector('[aria-label="Drafts composer"]', { timeout: 8_000 });
+await page.fill('[aria-label="To recipients"]', "mareike@sander-bauhaus.de");
+await page.keyboard.press("Enter");
+await page.fill("#compose-subject", "Close-guard race");
+await page.click(".compose-prose");
+await page.keyboard.type("Type then close at once.");
+await page.click('button[aria-label="Close composer"]');
+await page.waitForTimeout(2_000);
+result.steps.closeGuardRace = await page.evaluate(() => ({
+  guard: document.querySelector('[role="alertdialog"]')?.querySelector("p")?.textContent?.trim() ?? null,
+  composerOpen: !!document.querySelector('[aria-label="Drafts composer"]'),
+}));
+result.steps.closeGuardHonest =
+  result.steps.closeGuardRace.guard === null && !result.steps.closeGuardRace.composerOpen;
+
+/* 7. the dirty model: pristine closes silently; typed recipient text that
+ *    never became a chip asks first ("Unsaved edits"); a fully typed
+ *    address commits on close and saves */
+await page.keyboard.press("c");
+await page.waitForSelector('[aria-label="Drafts composer"]', { timeout: 8_000 });
+await page.waitForTimeout(600);
+await page.click('button[aria-label="Close composer"]');
+await page.waitForTimeout(1_200);
+result.steps.pristineClose = await page.evaluate(() => ({
+  guard: !!document.querySelector('[role="alertdialog"]'),
+  composerOpen: !!document.querySelector('[aria-label="Drafts composer"]'),
+}));
+result.steps.pristineClean = !result.steps.pristineClose.guard && !result.steps.pristineClose.composerOpen;
+
+// half-typed recipient → close must ask, with honest copy
+await page.keyboard.press("c");
+await page.waitForSelector('[aria-label="Drafts composer"]', { timeout: 8_000 });
+await page.click('[aria-label="To recipients"]');
+await page.keyboard.type("marei");
+await page.click('button[aria-label="Close composer"]');
+await page.waitForSelector('[role="alertdialog"]', { timeout: 6_000 });
+result.steps.recipientGuard = await page.evaluate(() => ({
+  h3: document.querySelector('[role="alertdialog"]')?.querySelector("h3")?.textContent?.trim() ?? null,
+  p: document.querySelector('[role="alertdialog"]')?.querySelector("p")?.textContent?.trim() ?? null,
+}));
+result.steps.recipientGuardHonest = result.steps.recipientGuard.h3 === "Unsaved edits";
+await page.click('[role="alertdialog"] button:has-text("Keep editing")');
+await page.waitForTimeout(300);
+// full address without Enter commits on close (blur-commit) and saves
+await page.fill('[aria-label="To recipients"]', "jannis@tinteundton.de");
+await page.fill("#compose-subject", "Blur-commit on close");
+await page.click('button[aria-label="Close composer"]');
+await page.waitForTimeout(2_000);
+result.steps.recipientCommit = await page.evaluate(() => ({
+  guard: !!document.querySelector('[role="alertdialog"]'),
+  composerOpen: !!document.querySelector('[aria-label="Drafts composer"]'),
+}));
+result.steps.recipientCommitCloses = !result.steps.recipientCommit.guard && !result.steps.recipientCommit.composerOpen;
+
+/* 8. the seeded demo draft opens in the composer without raw markdown —
+ *    what the reader renders is what the editor shows */
+await page.keyboard.press("g");
+await page.keyboard.press("d");
+await page.waitForTimeout(1_200);
+await page.locator('[role=option]', { hasText: "Entwurf: Antwort an Mareike" }).first().click();
+await page.waitForSelector('[aria-label="Drafts composer"]', { timeout: 15_000 });
+await page.waitForTimeout(600);
+result.steps.demoDraftBody = await page.evaluate(() => {
+  const prose = document.querySelector(".compose-prose");
+  const text = prose?.textContent ?? "";
+  return { head: text.slice(0, 80), rawMarkdown: /\*\*|`VITE_BACKEND/.test(text) };
+});
+result.steps.demoDraftClean = !result.steps.demoDraftBody.rawMarkdown && result.steps.demoDraftBody.head.includes("Liebe Mareike");
+await page.keyboard.press("Escape"); // close without touching it
+await page.waitForSelector('[aria-label="Drafts composer"]', { state: "detached", timeout: 10_000 });
+
+/* 9. settings: the composer toggle exists and works in mock */
 await page.goto("http://localhost:5173/settings", { waitUntil: "domcontentloaded" });
 await page.waitForSelector("text=Drafts composer", { timeout: 15_000 });
 result.steps.settingsTogglePresent = true;

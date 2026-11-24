@@ -134,6 +134,15 @@ function onKeydown(event: KeyboardEvent) {
   if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
     return;
   }
+  // Activation keys on focused controls belong to the control: Enter on a
+  // button (e.g. the saved-search ✕) must click it, not re-file the register.
+  if (
+    target &&
+    (target.tagName === "BUTTON" || target.tagName === "A" || target.tagName === "SELECT" || target.tagName === "SUMMARY") &&
+    (event.key === "Enter" || event.key === " ")
+  ) {
+    return;
+  }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
 
   if (event.key === "Escape") {

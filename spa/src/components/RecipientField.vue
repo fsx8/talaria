@@ -21,7 +21,7 @@ const props = defineProps<{
   modelValue: Recipient[];
   placeholder: string;
 }>();
-const emit = defineEmits<{ change: [value: Recipient[]] }>();
+const emit = defineEmits<{ change: [value: Recipient[]]; pending: [value: boolean] }>();
 
 // attrs (the aria-label) are bound explicitly on the input — no duplicate
 // fallthrough onto the wrapper div.
@@ -117,6 +117,9 @@ let queryTimer: ReturnType<typeof setTimeout> | null = null;
 let querySeq = 0;
 
 watch(draft, (value) => {
+  // Honest dirty signal: typed-but-uncommitted text is not in the draft yet
+  // (the composer's close guard asks before dropping it).
+  emit("pending", value.trim().length > 0);
   if (queryTimer) clearTimeout(queryTimer);
   const query = value.trim();
   if (!query || query.includes(" ")) {
@@ -162,6 +165,14 @@ function chipLabel(recipient: Recipient): string {
   return recipient.name && recipient.name !== recipient.email ? recipient.name : recipient.email;
 }
 
+function onBlur() {
+  suggestOpen.value = false;
+  // Commit what the line can hold on blur — a fully typed address must not
+  // be lost to a missed Enter. Text without an @ cannot become a chip; it
+  // stays in the field (pending) and the close guard asks before dropping.
+  if (hasText.value) commit(draft.value);
+}
+
 defineExpose({
   focus() {
     input.value?.focus();
@@ -205,7 +216,7 @@ defineExpose({
         spellcheck="false"
         @keydown="onKeydown"
         @paste="onPaste"
-        @blur="suggestOpen = false"
+        @blur="onBlur"
       />
     </div>
 

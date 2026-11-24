@@ -68,7 +68,7 @@ const title = (): string => {
 <template>
   <button
     v-if="push && state !== 'unconfigured'"
-    class="btn btn-ghost btn-square btn-sm h-7 w-7"
+    class="btn btn-ghost btn-square btn-sm h-7 w-7 flex-none"
     :class="state === 'subscribed' ? 'bg-base-300' : ''"
     :disabled="state === 'denied' || state === 'unsupported' || state === 'busy'"
     :aria-pressed="state === 'subscribed'"

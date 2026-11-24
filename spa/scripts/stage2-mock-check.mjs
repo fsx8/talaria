@@ -92,6 +92,40 @@ result.steps.savedRemoved = true;
 await page.fill("#talaria-search", "");
 await page.waitForTimeout(600);
 
+/* keyboard-only removal (reviewer regression: the ✕ used to be a hover-only
+ * span with no tab stop): create a second search, focus the row, Tab to the
+ * ✕ (revealed on focus), Enter removes. */
+await page.fill("#talaria-search", "Logo");
+await page.waitForTimeout(800);
+await page.click('summary[aria-label="Keep this search"]');
+await page.waitForFunction(
+  () => document.activeElement?.matches('input[aria-label="Name for the saved search"]'),
+  { timeout: 10_000 },
+);
+await page.fill('input[aria-label="Name for the saved search"]', "Tastatur Entfernen");
+await page.click('button:has-text("Keep"):visible');
+await page.waitForSelector('button:has-text("Tastatur Entfernen")', { timeout: 15_000 });
+const kbRow = page.locator("aside div.group\\/entry", { hasText: "Tastatur Entfernen" });
+await kbRow.locator("button").first().focus();
+await page.keyboard.press("Tab");
+result.steps.kbRemoveFocused = await page.evaluate(() => {
+  const el = document.activeElement;
+  if (!el || el.getAttribute("aria-label") !== "Remove saved search") return { isRemove: false };
+  const r = el.getBoundingClientRect();
+  return { isRemove: true, revealed: r.width > 0 && r.height > 0 && getComputedStyle(el).opacity !== "0" };
+});
+await page.keyboard.press("Enter");
+await kbRow.waitFor({ state: "detached", timeout: 8_000 });
+result.steps.kbRemoveWorks = (await page.locator("aside div.group\\/entry", { hasText: "Tastatur Entfernen" }).count()) === 0;
+// reset the rail
+const kbEntries = await page.locator("aside div.group\\/entry button[aria-label='Remove saved search']").count();
+for (let i = 0; i < kbEntries; i++) {
+  await page.locator("aside div.group\\/entry button[aria-label='Remove saved search']").first().click();
+  await page.waitForTimeout(300);
+}
+await page.fill("#talaria-search", "");
+await page.waitForTimeout(600);
+
 /* export .eml (mock raw source). Row 1 may be a draft entry — clicking it
  * opens the composer, not the reader — so walk rows until a mail opens. */
 const rows = await page.$$("[role=option]");

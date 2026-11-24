@@ -393,7 +393,9 @@ const posture = computed<"read-only" | "organize" | "organize-drafts" | "organiz
                     : 'border-base-300 hover:bg-base-300/50'
                 "
               >
-                <span class="flex min-w-0 items-center gap-2">
+                <!-- contain:inline-size: the label line must never set the
+                     card's intrinsic width (truncate keeps it on one line) -->
+                <span class="flex min-w-0 flex-1 items-center gap-2 [contain:inline-size]">
                   <span
                     class="account-chip flex-none"
                     :style="{ background: `var(--acct-${account.colorIndex})` }"
@@ -430,7 +432,10 @@ const posture = computed<"read-only" | "organize" | "organize-drafts" | "organiz
           <div class="card-body gap-3 p-4 md:p-5">
             <h3 class="card-title text-[13px] font-semibold">About &amp; status</h3>
 
-            <dl class="grid grid-cols-[auto_1fr] items-baseline gap-x-4 gap-y-1.5">
+            <!-- minmax(0,1fr): the value column must shrink below the
+                 longest line (truncate handles the rest) — an auto minimum
+                 here blew the card past the phone viewport -->
+            <dl class="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1.5">
               <dt class="agate w-28 text-right">Version</dt>
               <dd class="text-[12.5px] tabular">Talaria v{{ appVersion }}</dd>
 

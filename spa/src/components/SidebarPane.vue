@@ -186,36 +186,42 @@ function pressCancel() {
       </button>
     </div>
 
-    <!-- saved searches (Stage 2): click re-runs, right-click / long-press removes -->
+    <!-- saved searches (Stage 2): click re-runs; the ✕ is a real button
+         (own tab stop, revealed on focus) — right-click / long-press still
+         removes; hover-only controls have no keyboard, no touch -->
     <div v-if="searches.sorted.length" class="mb-2 mt-1 border-t border-base-300 pt-2">
       <h3 class="agate mb-1 px-2 font-semibold uppercase tracking-[0.08em]">Searches</h3>
-      <button
+      <div
         v-for="entry in searches.sorted"
         :key="entry.id"
-        class="group flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-[13px] text-base-content/70 hover:bg-base-300/50"
-        :class="mail.searchText.trim() === entry.query ? 'bg-base-300 font-semibold text-base-content' : ''"
-        :aria-current="mail.searchText.trim() === entry.query ? 'true' : undefined"
-        :title="`${entry.query} — right-click to remove`"
-        @click="runSearch(entry.id)"
+        class="group/entry flex w-full items-center gap-0.5 rounded-field pr-0.5"
+        :class="mail.searchText.trim() === entry.query ? 'bg-base-300' : ''"
         @contextmenu.prevent="removeSearch(entry.id)"
         @touchstart.passive="pressStart(entry.id)"
         @touchend.passive="pressCancel"
         @touchmove.passive="pressCancel"
         @touchcancel.passive="pressCancel"
       >
-        <IconGlyph name="search" :size="14" class="text-base-content/55" />
-        <span class="flex-1 truncate">{{ searches.displayName(entry) }}</span>
-        <span
-          class="btn btn-ghost btn-xs btn-circle hidden flex-none group-hover:flex"
-          role="button"
-          tabindex="-1"
+        <button
+          class="flex min-w-0 flex-1 items-center gap-2 rounded-field px-2 py-1.5 text-left text-[13px] text-base-content/70 hover:bg-base-300/50"
+          :class="mail.searchText.trim() === entry.query ? 'font-semibold text-base-content' : ''"
+          :aria-current="mail.searchText.trim() === entry.query ? 'true' : undefined"
+          :title="`${entry.query} — right-click or long-press to remove`"
+          @click="runSearch(entry.id)"
+        >
+          <IconGlyph name="search" :size="14" class="text-base-content/55" />
+          <span class="min-w-0 flex-1 truncate">{{ searches.displayName(entry) }}</span>
+        </button>
+        <button
+          type="button"
+          class="btn btn-ghost btn-xs btn-circle flex-none text-base-content/60 touch-target"
+          :class="mail.searchText.trim() === entry.query ? 'opacity-100' : 'opacity-0 group-hover/entry:opacity-100 group-focus-within/entry:opacity-100 focus-visible:opacity-100'"
           aria-label="Remove saved search"
           @click.stop="removeSearch(entry.id)"
-          @keydown.enter.stop.prevent="removeSearch(entry.id)"
         >
           <IconGlyph name="close" :size="12" />
-        </span>
-      </button>
+        </button>
+      </div>
     </div>
 
     <!-- docked agenda: the week at a glance (full page behind the switcher) -->

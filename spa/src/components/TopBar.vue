@@ -22,14 +22,13 @@ const compose = useComposeStore();
 const searchInput = ref<HTMLInputElement | null>(null);
 const today = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" }).format(new Date());
 
-/** Live unread: the SSE tally once events flow, the folder tally before that.
- *  With hidden accounts (Stage 2) the SSE global overcounts — the visible
- *  rail tally is the honest number (the backend still indexes hidden mail). */
-const folioUnread = computed(() =>
-  accounts.hasHiddenAccounts
-    ? accounts.registerUnread
-    : (mail.lastMailEvent?.unread ?? accounts.registerUnread),
-);
+/** Live unread: the locally reconciled rail tally. Read/flag toggles and
+ *  folder refreshes land here immediately (applyPatch → refreshUnread), so
+ *  the folio never waits on the 60 s poll. The SSE value seeds the baseline
+ *  (seedFolio) and drives the late-arrival stamp — it never overrides the
+ *  rail. With hidden accounts this is the honest number anyway: the rail
+ *  counts visible accounts only. */
+const folioUnread = computed(() => accounts.registerUnread);
 
 /** The folio flip: the last SSE arrival shows as a stamped correction for a while. */
 const lateEntryVisible = ref(false);
@@ -153,8 +152,10 @@ const posture = computed<{ label: string; icon: IconName; hint: string }>(() => 
         </div>
       </div>
 
-      <!-- folio: date, live unread tally, late-entries stamp -->
-      <div class="ml-auto flex flex-none items-center gap-2">
+      <!-- folio: date, live unread tally, late-entries stamp. The stamp
+           stays above md — on phones the arrival toast carries the news
+           and the bar must never clip the theme control. -->
+      <div class="ml-auto flex min-w-0 flex-none items-center gap-2">
         <span class="agate hidden xl:inline">{{ today }}</span>
         <span
           class="flex items-center gap-1.5 rounded-field border border-base-300 bg-base-100 px-2 py-1"
@@ -167,7 +168,7 @@ const posture = computed<{ label: string; icon: IconName; hint: string }>(() => 
         <span
           v-if="lateEntryVisible && lateDelta > 0"
           :key="mail.lastMailEventAt"
-          class="badge badge-soft badge-primary agate flip-step gap-1 !font-semibold"
+          class="badge badge-soft badge-primary agate flip-step hidden gap-1 !font-semibold md:inline-flex"
           aria-live="polite"
         >
           <IconGlyph name="mail" :size="12" />
@@ -177,7 +178,7 @@ const posture = computed<{ label: string; icon: IconName; hint: string }>(() => 
         <ThemeMenu />
         <button
           type="button"
-          class="btn btn-ghost btn-square btn-sm h-7 w-7"
+          class="btn btn-ghost btn-square btn-sm h-7 w-7 flex-none"
           :class="ui.activeView === 'settings' ? 'bg-base-300 text-base-content' : ''"
           :aria-current="ui.activeView === 'settings' ? 'page' : undefined"
           aria-label="Settings"

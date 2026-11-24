@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import IconGlyph from "./IconGlyph.vue";
 import type { MessageRef } from "../api";
 import type { Folder } from "../api/types";
@@ -42,6 +42,24 @@ function onToggle() {
   if (root.value?.open) void accounts.loadFolders().catch(() => {});
 }
 
+/** A picker whose entries vanished (batch selection dropped by a scope
+ *  switch) must not linger open as a disabled ghost over the register. */
+watch(
+  () => props.disabled || props.items.length === 0,
+  (dead) => {
+    if (dead) close();
+  },
+);
+
+/** Escape closes the open panel — keyboard users are never trapped in it. */
+function onPanelKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape" && root.value?.open) {
+    event.preventDefault();
+    event.stopPropagation();
+    close();
+  }
+}
+
 /** Folders a move may target: real mail places only — no delete-ish ends. */
 const MOVABLE_KINDS = new Set(["inbox", "sent", "archive", "folder", "savedsearch"]);
 
@@ -70,8 +88,11 @@ const groups = computed<FolderGroup[]>(() => {
   return out;
 });
 
-/** The (uniform) current folder of the entries — marked, not clickable. */
+/** The (uniform) current folder of the entries — marked, not clickable.
+ *  A mixed-folder batch has no single origin: the header says so instead
+ *  of naming the first item's folder. */
 const currentPaths = computed(() => new Set(props.items.map((i) => i.folderPath)));
+const mixedFolders = computed(() => currentPaths.value.size > 1);
 
 function currentFolderName(): string {
   const first = props.items[0];
@@ -121,7 +142,13 @@ function close() {
 </script>
 
 <template>
-  <details ref="root" class="dropdown" :class="disabled || items.length === 0 ? 'pointer-events-none opacity-40' : ''" @toggle="onToggle">
+  <details
+    ref="root"
+    class="dropdown"
+    :class="disabled || items.length === 0 ? 'pointer-events-none opacity-40' : ''"
+    @toggle="onToggle"
+    @keydown="onPanelKeydown"
+  >
     <summary class="btn btn-ghost btn-sm gap-1 px-2 text-base-content/80">
       <IconGlyph name="folder-in" :size="14" />
       <span>{{ label ?? "Move" }}</span>
@@ -130,7 +157,13 @@ function close() {
 
     <div class="dropdown-content z-30 mt-1 max-h-[400px] w-[288px] overflow-y-auto overscroll-contain rounded-field border border-base-300 bg-base-100 p-1.5 shadow-[0_8px_28px_var(--sheet-shadow)]" role="menu" aria-label="Move to folder">
       <p class="agate px-2 pb-1 pt-0.5">
-        File {{ items.length > 1 ? `${items.length} entries` : "entry" }}{{ currentFolderName() ? ` — from ${currentFolderName()}` : "" }}
+        File {{ items.length > 1 ? `${items.length} entries` : "entry" }}{{
+          mixedFolders
+            ? ` — from ${currentPaths.size} folders`
+            : currentFolderName()
+              ? ` — from ${currentFolderName()}`
+              : ""
+        }}
       </p>
 
       <div>

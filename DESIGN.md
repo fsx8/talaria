@@ -68,6 +68,9 @@ Reduced-motion collapses to opacity (see `prefers-reduced-motion` block).
 
 - Unread is never color-only (dot + semibold ink).
 - Focus-visible: 2px primary outline, 2px offset.
+- Touch targets: quiet icon controls carry a `.touch-target` ring —
+  visually unchanged, ≥44 px hit area (`style.css`); the register stays
+  agate-subtle, the thumb gets a real target.
 - Every icon-only control carries an `aria-label`; the register list is a
   `listbox` (`role=option` rows), the view switcher a `tablist`.
 - Print isolates the record sheet: chrome drops away (`print:hidden`,

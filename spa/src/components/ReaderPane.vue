@@ -312,7 +312,7 @@ function printSheet() {
 </script>
 
 <template>
-  <section class="flex min-h-0 flex-1 bg-base-200 md:border-l md:border-base-300" aria-label="Message reader">
+  <section class="flex min-h-0 min-w-0 flex-1 bg-base-200 md:border-l md:border-base-300" aria-label="Message reader">
     <!-- nothing selected -->
     <div v-if="!mail.selectedDetail && !mail.detailLoading && !mail.detailError" class="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
       <IconGlyph name="book" :size="28" class="text-base-content/55" />
@@ -347,8 +347,10 @@ function printSheet() {
     <!-- the record sheet -->
     <article v-else-if="mail.selectedDetail" ref="sheetRef" class="record-sheet mx-2 my-2 mb-2 min-w-0 flex-1 overflow-y-auto rounded-field">
       <div class="px-5 pb-5 pt-4 md:px-7">
-        <!-- toolbar -->
-        <div class="mb-3 flex items-center gap-1">
+        <!-- toolbar: wraps when the column runs narrow (the counter and
+             Print must stay inside the viewport — never squeezed into
+             multi-line crumbs) -->
+        <div class="mb-3 flex flex-wrap items-center gap-1">
           <button
             class="btn btn-ghost btn-sm gap-0.5 px-2 disabled:opacity-40"
             :disabled="!mail.prevId"
@@ -450,7 +452,7 @@ function printSheet() {
             <span class="hidden md:inline">Print</span>
           </button>
 
-          <span v-if="position" class="agate ml-auto">{{ position }}</span>
+          <span v-if="position" class="agate ml-auto flex-none whitespace-nowrap">{{ position }}</span>
         </div>
 
         <!-- subject + meta -->
@@ -462,7 +464,7 @@ function printSheet() {
           Draft — open it again from the register (or press O) to keep writing in the composer.
         </p>
 
-        <div class="mt-3 grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1">
+        <div class="mt-3 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1">
           <span class="w-10 text-right agate">From</span>
           <span class="flex min-w-0 items-center gap-2">
             <span

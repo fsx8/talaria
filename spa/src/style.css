@@ -549,6 +549,24 @@ input[type="search"]::-webkit-search-cancel-button {
   flex: none;
 }
 
+/* touch hit target for the quiet icon controls: the register stays agate-
+ * subtle, the finger gets a ≥44 px target — an invisible ::after ring
+ * extends the hit area without moving a pixel of layout. Tune the ring
+ * with `--hit-inset` (visual + 2×inset = the effective target). Layered
+ * `components` so Tailwind utilities may override the inset per size. */
+@layer components {
+  .touch-target {
+    position: relative;
+    --hit-inset: -10px;
+  }
+  .touch-target::after {
+    content: "";
+    position: absolute;
+    inset: var(--hit-inset);
+    border-radius: inherit;
+  }
+}
+
 /* unread mark — the bright brand accent, always paired with heavier ink
  * (never color alone) */
 .unread-dot {

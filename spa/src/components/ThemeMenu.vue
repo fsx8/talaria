@@ -29,7 +29,7 @@ function iconFor(entry: ThemeEntry): "sun" | "moon" {
 </script>
 
 <template>
-  <details ref="dropdown" class="dropdown dropdown-end">
+  <details ref="dropdown" class="dropdown dropdown-end flex-none">
     <summary
       class="btn btn-ghost btn-square btn-sm h-7 w-7 list-none [&::-webkit-details-marker]:hidden"
       aria-label="Choose theme"

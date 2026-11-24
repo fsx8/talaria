@@ -92,9 +92,11 @@ function batchFlag() {
 
 <template>
   <section class="flex min-h-0 flex-1 flex-col bg-base-200" aria-label="Message list">
-    <!-- page head: scope, tally, filters — or the batch bar in select mode -->
-    <div class="flex h-10 flex-none items-center gap-2 border-b border-base-300 px-3">
-      <h2 class="flex-none text-[13px] font-semibold">{{ mail.scopeLabel }}</h2>
+    <!-- page head: scope, tally, filters — or the batch bar in select mode.
+         Wraps when the pane runs narrow so no control (Done!) ever leaves
+         the pane — leaving selection mode must work on a phone. -->
+    <div class="flex min-h-10 flex-none flex-wrap items-center gap-x-2 gap-y-1 border-b border-base-300 px-3 py-1">
+      <h2 class="min-w-0 truncate text-[13px] font-semibold">{{ mail.scopeLabel }}</h2>
       <span v-if="!mail.listLoading" class="agate flex-none">{{ groupCount(mail.totalMatches) }}</span>
       <!-- Stage 2: the implicit scope a typed query is filed under -->
       <span
@@ -105,7 +107,7 @@ function batchFlag() {
         <IconGlyph name="folder" :size="11" />
         <span class="truncate">{{ mail.typedScopeLabel }}</span>
       </span>
-      <div class="ml-auto flex flex-none items-center gap-1">
+      <div class="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
         <!-- batch bar (selection mode) -->
         <template v-if="mail.selectMode">
           <span class="agate flex-none px-1" aria-live="polite">

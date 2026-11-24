@@ -409,6 +409,12 @@ Jannis`,
         recipients: "mareike@sander-bauhaus.de",
         ago: 30 * MINUTE,
         preview: "Liebe Mareike, danke für die klare Rückmeldung — Variante C kommt am Dienstag…",
+        body: `Liebe Mareike,
+
+danke für die klare Rückmeldung. Variante C kommt am Dienstag in die Abstimmung — falls der Vorstand zurückwill, bereite ich die Schraffuren von A derweil feiner auf.
+
+Viele Grüße
+Ada`,
       },
       {
         id: "m-118",
@@ -848,6 +854,12 @@ function compile(): {
     for (const m of seed.messages) {
       const folderPath = pathByFolder.get(m.folder) ?? pathByFolder.get("Inbox")!;
       const date = new Date(now - m.ago).toISOString();
+      const plainBody = m.body ?? generatedBody(m);
+      // Demo drafts open in the composer too (drafts register → Tiptap),
+      // and Tiptap is no markdown renderer — store them as HTML so the
+      // composer shows exactly what the reader shows. (Real IMAP text
+      // drafts land as plain text the same way.)
+      const isDraftSeed = m.folder === "Drafts";
       messages.set(m.id, {
         summary: {
           id: m.id,
@@ -864,8 +876,10 @@ function compile(): {
           hasAttachments: m.attachments && m.attachments.length > 0 ? true : undefined,
         },
         detail: {
-          body: m.body ?? generatedBody(m),
-          bodyFormat: "markdown",
+          body: isDraftSeed
+            ? `<p>${escapeHtml(plainBody).replaceAll("\n", "<br />")}</p>`
+            : plainBody,
+          bodyFormat: isDraftSeed ? "html" : "markdown",
           attachments: m.attachments ?? [],
           authentication: m.auth,
           bodyTruncated: false,
@@ -1037,7 +1051,7 @@ const EVENT_SEEDS: Array<{ id: string; calendarId: string; title: string; locati
   { id: "e-geburtstag", calendarId: "cal-atelier", title: "Tuana hat Geburtstag", slot: at(3), recurring: true },
   { id: "e-essen", calendarId: "cal-atelier", title: "Familienessen", slot: at(4, 12, 30, 120) },
   { id: "e-vernissage", calendarId: "cal-atelier", title: "Vernissage Katalog", location: "Sander-Bauhaus Foyer", slot: at(5, 18, 0, 180) },
-  { id: "e-advent", calendarId: "cal-holidays", title: "Erster Advent", slot: at(6) },
+  { id: "e-advent", calendarId: "cal-holidays", title: "Erster Advent", slot: at(5) },
 ];
 
 const TASK_SEEDS = [

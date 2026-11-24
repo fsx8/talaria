@@ -121,14 +121,26 @@ export const useComposeStore = defineStore("compose", {
     saving: false,
     savedAt: 0,
     saveError: null as string | null,
-    /** Pending confirmation: "close" (unsaved) or "discard". */
+    /** Pending confirmation: "close" (unsaved) or "discard".
+     *  closeReason says WHY close needs asking — a failed save ("saveFailed")
+     *  or edits that the draft does not hold ("edits", e.g. recipient text
+     *  that never became a chip). Never claim a failure that did not happen. */
     confirm: null as "close" | "discard" | null,
+    closeReason: null as "saveFailed" | "edits" | null,
+    /** Field keys (to/cc/bcc) holding typed-but-uncommitted recipient text —
+     *  honest dirty: this text is not in the draft yet and close must not
+     *  drop it silently. */
+    pendingRecipients: [] as string[],
 
     /** Honest capability: does the add-on serve the draft tier? Probed
      *  lazily once per session (null = not yet asked). */
     capability: null as boolean | null,
 
     autoTimer: null as ReturnType<typeof setTimeout> | null,
+
+    /** The in-flight save (blur flush racing an explicit one). Close paths
+     *  await it instead of misreading the collision as a failure. */
+    inflightSave: null as Promise<boolean> | null,
   }),
 
   getters: {
@@ -340,7 +352,24 @@ export const useComposeStore = defineStore("compose", {
       };
     },
 
+    /** Save the draft. A second call while one is in flight (blur autosave
+     *  racing the Save button, or Close racing a blur flush) queues behind
+     *  the in-flight save and reports ITS result — never a synthetic
+     *  failure. */
     async save(opts: { manual?: boolean; thenClose?: boolean } = {}): Promise<boolean> {
+      if (!this.open) return false;
+      if (this.saving) {
+        return this.inflightSave ? await this.inflightSave : false;
+      }
+      const run = this.performSave(opts);
+      this.inflightSave = run;
+      const result = await run.finally(() => {
+        if (this.inflightSave === run) this.inflightSave = null;
+      });
+      return result;
+    },
+
+    async performSave(opts: { manual?: boolean; thenClose?: boolean } = {}): Promise<boolean> {
       if (!this.open || this.saving) return false;
       const backend = getBackend();
       if (typeof backend.saveDraft !== "function") return false;
@@ -382,19 +411,42 @@ export const useComposeStore = defineStore("compose", {
       }
     },
 
-    /** Close (keeps the draft): save if dirty, confirm when the save fails. */
+    /** Close (keeps the draft): let an in-flight autosave land first, then
+     *  save if dirty. The confirm dialog only asks for REAL reasons — a
+     *  failed save, or edits the draft does not hold (uncommitted recipient
+     *  text). A save that merely raced this close never claims failure. */
     async attemptClose() {
       if (this.confirm) return;
+      if (this.saving && this.inflightSave) {
+        try {
+          await this.inflightSave;
+        } catch { /* the retry below reports honestly */ }
+      }
+      if (!this.open) return; // the save path already closed (thenClose)
       if (this.dirty) {
         const saved = await this.save({ manual: false });
         if (!saved) {
           this.confirm = "close"; // honest: the draft is NOT in the mailbox
+          this.closeReason = "saveFailed";
           return;
         }
-      } else if (this.saving) {
-        return; // a save is in flight — let it land first
+      }
+      if (this.pendingRecipients.length > 0) {
+        // Typed recipient text that never became a chip cannot be saved —
+        // closing would drop it silently, so ask first.
+        this.confirm = "close";
+        this.closeReason = "edits";
+        return;
       }
       this.close();
+    },
+
+    /** RecipientField reports its uncommitted draft text (blur commits valid
+     *  addresses; leftovers like "marei" stay pending until resolved). */
+    setRecipientPending(key: string, pending: boolean) {
+      const has = this.pendingRecipients.includes(key);
+      if (pending && !has) this.pendingRecipients.push(key);
+      if (!pending && has) this.pendingRecipients = this.pendingRecipients.filter((k) => k !== key);
     },
 
     /** Discard: existing draft → move to Trash via the W1 move path. */
@@ -423,6 +475,7 @@ export const useComposeStore = defineStore("compose", {
       }
       this.open = false;
       this.confirm = null;
+      this.closeReason = null;
       this.resetFields();
     },
 
@@ -453,6 +506,8 @@ export const useComposeStore = defineStore("compose", {
       this.saving = false;
       this.savedAt = 0;
       this.saveError = null;
+      this.pendingRecipients = [];
+      this.closeReason = null;
     },
 
     isDraftsRow(folderPath: string): boolean {

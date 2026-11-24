@@ -252,6 +252,7 @@ function onSubjectInput(event: Event) {
                 aria-label="To recipients"
                 placeholder="name@example.de"
                 @change="(value) => { compose.to = value; compose.markDirty(); }"
+                @pending="(value) => compose.setRecipientPending('to', value)"
               />
               <button
                 v-if="!showCc && !showBcc"
@@ -281,6 +282,7 @@ function onSubjectInput(event: Event) {
               aria-label="Cc recipients"
               placeholder="name@example.de"
               @change="(value) => { compose.cc = value; compose.markDirty(); }"
+              @pending="(value) => compose.setRecipientPending('cc', value)"
             />
           </div>
 
@@ -291,6 +293,7 @@ function onSubjectInput(event: Event) {
               aria-label="Bcc recipients"
               placeholder="name@example.de"
               @change="(value) => { compose.bcc = value; compose.markDirty(); }"
+              @pending="(value) => compose.setRecipientPending('bcc', value)"
             />
           </div>
 
@@ -458,7 +461,7 @@ function onSubjectInput(event: Event) {
         class="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(8,14,22,0.35)] p-4"
         role="alertdialog"
         aria-modal="true"
-        :aria-label="compose.confirm === 'discard' ? 'Discard draft' : 'Draft not saved'"
+        :aria-label="compose.confirm === 'discard' ? 'Discard draft' : compose.closeReason === 'edits' ? 'Unsaved edits' : 'Draft not saved'"
         @click.self="compose.cancelConfirm()"
       >
         <div class="w-full max-w-[380px] rounded-field border border-base-300 bg-base-100 p-4 shadow-[0_16px_48px_var(--sheet-shadow)]">
@@ -479,9 +482,13 @@ function onSubjectInput(event: Event) {
             </div>
           </template>
           <template v-else>
-            <h3 class="text-[13px] font-semibold">Draft not saved</h3>
+            <h3 class="text-[13px] font-semibold">{{ compose.closeReason === "edits" ? "Unsaved edits" : "Draft not saved" }}</h3>
             <p class="mt-1 text-[12.5px] leading-snug text-base-content/70">
-              The last save failed — the mailbox does not have your latest text. Close anyway?
+              {{
+                compose.closeReason === "edits"
+                  ? "Some recipient text is not part of the draft yet — closing loses it."
+                  : "The last save failed — the mailbox does not have your latest text. Close anyway?"
+              }}
             </p>
             <div class="mt-3 flex justify-end gap-2">
               <button type="button" class="btn btn-ghost btn-sm" @click="compose.cancelConfirm()">Keep editing</button>

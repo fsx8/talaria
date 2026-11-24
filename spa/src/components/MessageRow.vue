@@ -115,30 +115,32 @@ function toggleFlag() {
     </button>
 
     <!-- quick actions: hover overlay, right-aligned over the date slot.
-         Confirmation-free by design — both toggles are reversible. -->
+         Confirmation-free by design — both toggles are reversible.
+         32 px visuals with a ≥44 px touch ring (see .touch-target) —
+         quiet for the eye, honest for the thumb. -->
     <div
       v-if="mail.actionsVisible && !mail.selectMode"
       class="row-actions absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100"
     >
       <button
         type="button"
-        class="btn btn-ghost btn-xs btn-circle border-base-300 bg-base-100/90"
+        class="btn btn-ghost btn-circle h-8 w-8 touch-target border-base-300 bg-base-100/90 [--hit-inset:-6px]"
         :class="summary.flagged ? 'text-warning' : 'text-base-content/60'"
         :title="summary.flagged ? 'Remove flag' : 'Flag'"
         :aria-label="summary.flagged ? 'Remove flag' : 'Flag'"
         @click.stop="toggleFlag"
       >
-        <IconGlyph name="flag" :size="13" />
+        <IconGlyph name="flag" :size="14" />
       </button>
       <button
         type="button"
-        class="btn btn-ghost btn-xs btn-circle border-base-300 bg-base-100/90"
+        class="btn btn-ghost btn-circle h-8 w-8 touch-target border-base-300 bg-base-100/90 [--hit-inset:-6px]"
         :class="summary.read ? 'text-base-content/60' : 'text-primary'"
         :title="summary.read ? 'Mark unread' : 'Mark read'"
         :aria-label="summary.read ? 'Mark unread' : 'Mark read'"
         @click.stop="toggleRead"
       >
-        <IconGlyph :name="summary.read ? 'mail' : 'mail-open'" :size="13" />
+        <IconGlyph :name="summary.read ? 'mail' : 'mail-open'" :size="14" />
       </button>
     </div>
   </div>
