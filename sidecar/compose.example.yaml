@@ -1,0 +1,37 @@
+# Example compose shape for Talaria's sidecar (tbweb).
+#
+# The sidecar MUST share the Thunderbird container's network namespace so
+# the commonpost addon's HTTP server stays on loopback and the stable token
+# never crosses a network. Put the real values in a .env file next to this
+# file (COMMONPOST_MCP_TOKEN, TBWEB_VAPID_*); never commit them.
+#
+#   docker compose -f compose.example.yaml up -d tbweb
+#
+services:
+  thunderbird:
+    image: your-thunderbird-image            # commonpost addon installed + configured
+    # ... your Thunderbird container's own configuration ...
+
+  tbweb:
+    image: node:22-bookworm
+    depends_on:
+      - thunderbird
+    network_mode: "service:thunderbird"      # share TB's netns: addon = loopback :8780
+    working_dir: /app
+    environment:
+      COMMONPOST_MCP_TOKEN: ${COMMONPOST_MCP_TOKEN:?set in .env}
+      TBWEB_VAPID_PUBLIC_KEY: ${TBWEB_VAPID_PUBLIC_KEY:-}
+      TBWEB_VAPID_PRIVATE_KEY: ${TBWEB_VAPID_PRIVATE_KEY:-}
+      PORT: "8942"
+      COMMONPOST_PORTS: "8780-8789"
+    command: sh -c "npm ci --omit=dev && node src/index.js"
+    volumes:
+      # Either bind-mount this repo's sidecar/ (live source, as the
+      # maintainer's deployment does) or bake it into your own image.
+      - ./sidecar:/app:ro
+    restart: unless-stopped
+    # The port lives in Thunderbird's netns; publish it on a private
+    # interface or reach it through your authenticating reverse proxy —
+    # never bind it publicly without a gate in front.
+    ports:
+      - "127.0.0.1:8942:8942"

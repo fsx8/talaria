@@ -1,14 +1,16 @@
 # Talaria
 
-**An unofficial web client for Thunderbird.** A read-only PWA webmail UI on
+**An unofficial web client for Thunderbird.** A PWA webmail UI on
 top of the [commonpost](https://github.com/commonpost/thunderbird-mcp) MCP
 addon: your mail, natively rendered in any browser, on desktop and phone.
 
 Talaria is for people who run Thunderbird as their mail hub and want to
 triage it from anywhere — the same folders, threads and contacts, but as a
-fast web app instead of a remote-desktop session. It reads; it never writes.
-Nothing you see here can move, flag, or send a message — the write tools are
-disabled server-side, and the UI has no affordances for them at all.
+fast web app instead of a remote-desktop session. You can read, search,
+organize (read/flag/move) and compose **drafts** — but you can never send
+or delete from here: those tools are disabled server-side in the addon, and
+the UI has no affordances for them at all. Sending stays in Thunderbird or
+on your phone.
 
 | Desktop (1440×900) | Phone — list | Phone — reader |
 | --- | --- | --- |
@@ -89,21 +91,38 @@ Environment contract (all sidecar env vars documented in
 ## Features
 
 - **Unified view across accounts** — all accounts in one rail, all folders
-  with unread tallies, one live unread folio.
+  with unread tallies, one live unread folio; hide accounts you don't need.
+- **Fast boot** — one prewarmed bootstrap call plus a localStorage snapshot:
+  first mail row in under a second, repeat visits paint instantly.
+- **Organize** — mark read/unread and flag (single or batch), move entries
+  to any folder (with inline folder creation), mark-as-read-on-open.
+- **Drafts composer** — reply / reply-all / forward / new, rich-text
+  editing, recipient chips with address-book autocomplete, autosave, and
+  discard-to-Trash. Drafts only: **there is no Send button** — sending
+  happens in Thunderbird or on your phone.
 - **Search operators** — `from:`, `to:`, `cc:`, `subject:`,
-  `participant:@domain`, plus free text; unread/flagged filter toggles.
-- **Threads** — the conversation renders in the reader
-  (cross-folder via `threadOf`), with per-message SPF/DKIM/DMARC seal pills.
-- **Contacts** — address-book search, paged results, contact cards.
+  `participant:@domain`, plus free text; unread/flagged filters, per-account
+  or per-folder scope, and client-side saved searches.
+- **Keyboard-driven** — `j/k` to move, `x` to select, `m` to move, `c` to
+  compose, `g`-chords to jump between views and folders, `?` for the map.
+- **Threads** — the conversation renders in the reader (cross-folder via
+  `threadOf`), with per-message SPF/DKIM/DMARC seal pills.
+- **Attachments & export** — per-attachment download and exact `.eml`
+  export, extracted client-side from the RFC 822 source; print stylesheet
+  for a clean paper record.
+- **Contacts** — address-book search, paged results, contact cards, and
+  "show their mail" integration.
 - **Agenda** — docked "next 7 days" rail widget plus a full agenda page
   (calendars, expanded recurring events, open tasks badge).
 - **Web push** — self-hosted VAPID notifications on unread-count change; no
   third-party push service configuration beyond the browser vendors'.
+- **Remote-image consent** — bodies render without remote images; a
+  per-message "Load images" consent, with tracking pixels always stripped.
+- **Themes & settings** — 37 themes (two Talaria identities + daisyUI
+  built-ins) with live switching, density, account-label mode, search
+  scope, and privacy defaults on a real settings page.
 - **PWA** — installable, offline app shell, standalone on phone home
-  screens.
-- **Themes** — light / dark / system with a pre-paint resolver (no flash),
-  responsive from 3-pane desktop down to stacked phone layout with bottom
-  nav.
+  screens; responsive from 3-pane desktop down to stacked phone layout.
 - **Virtualized message list** — smooth on five-digit-folder corpora;
   paginate or load more.
 
@@ -113,11 +132,16 @@ Environment contract (all sidecar env vars documented in
   application-level auth; the design assumes the proxy is the gate.
 - **The commonpost token never reaches the browser.** It lives in the
   sidecar process and is attached to upstream calls server-side.
-- **Read-only posture.** Every write tool is disabled in the addon config;
-  the UI shows no compose/send/move/flag/delete affordances. Attachment
-  downloads stay in Thunderbird — the reader lists attachments only.
-- **Remote images in bodies are stripped** (DOMPurify) — no tracking pixels
-  on your readers. A consent-gated loader is future scope.
+- **No send, no delete.** `sendMail` and every deletion tool are disabled
+  in the addon config — Talaria composes drafts only, and organize actions
+  (read/flag/move/folder-create) are the full write surface. The composer
+  has no Send button, asserted in the regression harnesses.
+- **Remote images in bodies are stripped by default** (DOMPurify) — no
+  tracking pixels on your readers. A per-message "Load images" consent
+  exists; 2×2 tracking pixels are stripped even when you consent.
+- Attachment downloads and `.eml` export are extracted client-side from the
+  message source your sidecar already proxies — bytes never pass through a
+  third party.
 - Keep the addon's HTTP server off public interfaces; the sidecar should be
   the only reachable hop, and the addon itself refuses public listen
   addresses.
@@ -127,11 +151,10 @@ Environment contract (all sidecar env vars documented in
 - **Lower-latency live events** — SSE is currently fed by a 60 s unread
   poll; porting the community change-journal approach would cut delivery to
   seconds without touching the frontend contract (SSE stays).
-- **Send support** when/where the addon enables write tools — compose and
-  send are deliberately absent until then.
-- Attachment downloads, consent-gated remote-image loading, per-row
-  attachment flags in list responses, thread grouping in the list pane —
-  small, known gaps tracked as the addon surface grows.
+- **A scoped search fast path** — typed queries currently walk the full
+  corpus; folder-first typing would cut latency further.
+- **Push polish** — end-to-end tests on real installed PWAs (desktop and
+  phone) on a production origin.
 
 ## Status: alpha, works on our machine
 

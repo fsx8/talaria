@@ -495,7 +495,7 @@ async function serveStatic(req, reply) {
 
   let ext = path.extname(target).toLowerCase();
   if (!ext || !statSyncSafe(target)) {
-    // Extension-less route (Vue router arrives in Phase 2) -> SPA fallback
+    // Extension-less route (routing is the SPA's own ui-store model) -> SPA fallback
     const fallback = path.join(PUBLIC_DIR, 'index.html');
     if (statSyncSafe(fallback)) {
       target = fallback;

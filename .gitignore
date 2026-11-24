@@ -2,3 +2,11 @@ node_modules/
 dist/
 .vite/
 dev-dist/
+
+# Private ops notes — local only, never published.
+HANDOVER.md
+
+# Harness screenshot output. Curated public shots live directly in
+# docs/screenshots/ (tracked); real-mode captures are never committed.
+docs/screenshots/real-*
+docs/screenshots/*/

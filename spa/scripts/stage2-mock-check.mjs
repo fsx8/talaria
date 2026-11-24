@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 
-const BASE = process.env.MOCK_BASE ?? "http://127.0.0.1:5174";
+const BASE = process.env.MOCK_BASE ?? "http://localhost:5174";
 
 function findChrome() {
   const cacheRoot = join(process.env.HOME ?? "/root", ".cache", "ms-playwright");
@@ -70,9 +70,18 @@ result.steps.savedRemoved = !(await page.isVisible('button:has-text("Demo Rechnu
 await page.fill("#talaria-search", "");
 await page.waitForTimeout(600);
 
-/* export .eml (mock raw source) */
-await page.click("[role=option]");
-await page.waitForSelector("article.record-sheet", { timeout: 10_000 });
+/* export .eml (mock raw source). Row 1 may be a draft entry — clicking it
+ * opens the composer, not the reader — so walk rows until a mail opens. */
+const rows = await page.$$("[role=option]");
+for (let i = 0; i < Math.min(rows.length, 6); i++) {
+  const label = ((await rows[i].textContent()) ?? "").trim();
+  if (label.startsWith("To: ")) continue; // draft row
+  await rows[i].click();
+  try {
+    await page.waitForSelector('article.record-sheet button[aria-label="Export as .eml"]', { timeout: 5_000 });
+    break;
+  } catch { /* next row */ }
+}
 const dl = page.waitForEvent("download", { timeout: 20_000 });
 await page.click('button[aria-label="Export as .eml"]');
 const eml = await dl;
@@ -89,10 +98,13 @@ result.steps.mockEml = {
 const attButton = 'article.record-sheet li button[aria-label^="Download"]';
 const hasAtt = (await page.$$eval(attButton, (els) => els.length)) > 0;
 if (!hasAtt) {
-  // open rows until one carries attachments
-  for (let i = 1; i < 8; i++) {
-    const rows = await page.$$("[role=option]");
-    await rows[i]?.click();
+  // open further rows until one carries attachments (skip draft rows —
+  // they open the composer; Escape closes it if one slipped through)
+  const candidates = await page.$$("[role=option]");
+  for (let i = 1; i < Math.min(candidates.length, 9); i++) {
+    const label = ((await candidates[i].textContent()) ?? "").trim();
+    if (label.startsWith("To: ")) continue;
+    await candidates[i].click({ timeout: 5_000 }).catch(() => page.keyboard.press("Escape"));
     await page.waitForTimeout(600);
     if ((await page.$$eval(attButton, (els) => els.length)) > 0) break;
   }

@@ -108,7 +108,7 @@ if (MODE === "mock") {
   await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Collapse all"))?.click());
 
   // contacts view
-  await page.getByRole("button", { name: "Contacts" }).first().click();
+  await page.getByRole("tab", { name: "Contacts" }).first().click();
   await page.waitForSelector("[role=option][aria-label='Contacts'] >> nth=2", { timeout: 10_000 }).catch(() => {});
   await page.waitForFunction(
     () => document.querySelectorAll("[role=option]").length > 3,
@@ -119,12 +119,12 @@ if (MODE === "mock") {
   await shot(page, "mock-contacts-desktop");
 
   // agenda page
-  await page.getByRole("button", { name: "Agenda" }).first().click();
+  await page.getByRole("tab", { name: "Agenda" }).first().click();
   await page.waitForFunction(() => document.body.innerText.includes("Today"), { timeout: 8000 });
   await shot(page, "mock-agenda-desktop");
 
   // rail with docked agenda widget (back to mail view)
-  await page.getByRole("button", { name: "Register" }).first().click();
+  await page.getByRole("tab", { name: "Register" }).first().click();
   await page.waitForTimeout(400);
   await shot(page, "mock-mail-agenda-docked-desktop");
   await context.close();
@@ -152,11 +152,11 @@ if (MODE === "mock") {
   // on phones the switcher lives in the rail drawer
   await m.page.getByRole("button", { name: "Back" }).click();
   await m.page.getByRole("button", { name: "Open folders" }).click();
-  await m.page.getByRole("button", { name: "Contacts" }).first().click();
+  await m.page.getByRole("tab", { name: "Contacts" }).first().click();
   await m.page.waitForFunction(() => document.querySelectorAll("[role=option]").length > 3, { timeout: 10_000 });
   await shot(m.page, "mock-contacts-mobile");
   await m.page.getByRole("button", { name: "Open folders" }).click();
-  await m.page.getByRole("button", { name: "Agenda" }).first().click();
+  await m.page.getByRole("tab", { name: "Agenda" }).first().click();
   await m.page.waitForFunction(() => document.body.innerText.includes("Today"), { timeout: 8000 });
   await shot(m.page, "mock-agenda-mobile");
   await m.context.close();
@@ -184,42 +184,40 @@ if (MODE === "mock") {
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("[role=option]", { timeout: 60_000 });
 
-  // real thread: find a Herne-im-Advent message and open the conversation
-  await page.getByRole("searchbox", { name: "Search mail" }).fill("Herne im Advent");
-  await page.waitForFunction(
-    () => {
-      const rows = [...document.querySelectorAll("[role=option]")];
-      return rows.length > 0 && rows.length <= 10 && rows.some((r) => r.textContent?.includes("Herne im Advent"));
-    },
-    { timeout: 45_000 },
-  );
-  await page
-    .locator("[role=option]")
-    .filter({ hasText: "Herne im Advent" })
-    .filter({ hasNotText: "TinaCloud" })
-    .first()
-    .click({ timeout: 20_000 });
-  await page.waitForFunction(
-    () => {
-      const heading = [...document.querySelectorAll("h3")].find((h) => h.textContent?.includes("Thread ·"));
-      return heading !== undefined;
-    },
-    { timeout: 60_000 },
-  );
-  result.checks.realThreadHeader = await page.evaluate(() => {
-    const el = [...document.querySelectorAll("h3")].find((h) => h.textContent?.includes("Thread ·"));
-    return el?.textContent?.trim() ?? null;
-  });
-  await page.evaluate(() => {
-    const btn = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Expand all"));
-    btn?.scrollIntoView({ block: "center" });
-  });
-  await page.waitForTimeout(500);
-  await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Expand all"))?.click());
-  await page
-    .waitForSelector("section[aria-label='Conversation'] .thread-prose", { timeout: 45_000 })
-    .catch(() => {});
-  await page.waitForTimeout(600);
+  // real thread: open register rows until the conversation panel appears
+  // (cross-folder threadOf — real mailbox subjects never enter a published
+  // harness). Records honestly when no threaded mail is among the rows.
+  const openRealThread = async (p) => {
+    const rows = await p.$$("[role=option]");
+    for (let i = 0; i < Math.min(rows.length, 12); i++) {
+      await rows[i].click({ timeout: 20_000 }).catch(() => {});
+      await p.waitForSelector("article.record-sheet", { timeout: 20_000 }).catch(() => {});
+      const got = await p
+        .waitForFunction(
+          () => [...document.querySelectorAll("h3")].some((h) => h.textContent?.includes("Thread ·")),
+          { timeout: 10_000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (got) return true;
+      await p.keyboard.press("Escape").catch(() => {});
+      await p.waitForTimeout(400);
+    }
+    return false;
+  };
+  result.checks.realThreadOpened = await openRealThread(page);
+  if (result.checks.realThreadOpened) {
+    await page.evaluate(() => {
+      const btn = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Expand all"));
+      btn?.scrollIntoView({ block: "center" });
+    });
+    await page.waitForTimeout(500);
+    await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Expand all"))?.click());
+    await page
+      .waitForSelector("section[aria-label='Conversation'] .thread-prose", { timeout: 45_000 })
+      .catch(() => {});
+    await page.waitForTimeout(600);
+  }
   await shot(page, "real-threaded-reader-desktop");
   await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Collapse all"))?.click());
 
@@ -234,7 +232,7 @@ if (MODE === "mock") {
   await shot(page, "real-push-enabled-desktop");
 
   // real contacts
-  await page.getByRole("button", { name: "Contacts" }).first().click();
+  await page.getByRole("tab", { name: "Contacts" }).first().click();
   await page.waitForFunction(() => document.querySelectorAll("[role=option]").length > 3, { timeout: 40_000 });
   result.checks.realContactRows = await page.evaluate(
     () => document.querySelectorAll("[role=option]").length,
@@ -242,7 +240,7 @@ if (MODE === "mock") {
   await shot(page, "real-contacts-desktop");
 
   // real agenda
-  await page.getByRole("button", { name: "Agenda" }).first().click();
+  await page.getByRole("tab", { name: "Agenda" }).first().click();
   await page.waitForFunction(
     () => document.body.innerText.includes("Today") || document.body.innerText.includes("No calendar entries"),
     { timeout: 40_000 },
@@ -261,24 +259,7 @@ if (MODE === "mock") {
   mPage.on("console", (msg) => { if (msg.type() === "error") result.errors.push("mobile console: " + msg.text().slice(0, 120)); });
   await m.page.goto(BASE, { waitUntil: "domcontentloaded" });
   await m.page.waitForSelector("[role=option]", { timeout: 60_000 });
-  await m.page.getByRole("searchbox", { name: "Search mail" }).fill("Herne im Advent");
-  await m.page.waitForFunction(
-    () => {
-      const rows = [...document.querySelectorAll("[role=option]")];
-      return rows.length > 0 && rows.length <= 10 && rows.some((r) => r.textContent?.includes("Herne im Advent"));
-    },
-    { timeout: 45_000 },
-  );
-  await m.page
-    .locator("[role=option]")
-    .filter({ hasText: "Herne im Advent" })
-    .filter({ hasNotText: "TinaCloud" })
-    .first()
-    .click({ timeout: 20_000 });
-  await m.page.waitForFunction(
-    () => [...document.querySelectorAll("h3")].some((h) => h.textContent?.includes("Thread ·")),
-    { timeout: 60_000 },
-  );
+  result.checks.realThreadMobileOpened = await openRealThread(m.page);
   await m.page.evaluate(() => {
     const btn = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Expand all"));
     btn?.scrollIntoView({ block: "center" });
@@ -298,11 +279,11 @@ if (MODE === "mock") {
   await m2.page.goto(BASE, { waitUntil: "domcontentloaded" });
   await m2.page.waitForSelector("header", { timeout: 60_000 });
   await m2.page.getByRole("button", { name: "Open folders" }).click();
-  await m2.page.getByRole("button", { name: "Contacts" }).first().click();
+  await m2.page.getByRole("tab", { name: "Contacts" }).first().click();
   await m2.page.waitForFunction(() => document.querySelectorAll("[role=option]").length > 3, { timeout: 60_000 });
   await shot(m2.page, "real-contacts-mobile");
   await m2.page.getByRole("button", { name: "Open folders" }).click();
-  await m2.page.getByRole("button", { name: "Agenda" }).first().click();
+  await m2.page.getByRole("tab", { name: "Agenda" }).first().click();
   await m2.page.waitForFunction(
     () => document.body.innerText.includes("Today") || document.body.innerText.includes("No calendar entries"),
     { timeout: 60_000 },
