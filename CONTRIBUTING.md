@@ -25,6 +25,35 @@ PRs and issues are welcome.
   screenshots and harness output are gitignored — keep them that way).
   Demo data lives in `spa/src/api/mock-backend.ts` and must stay fictional.
 
+## Development loop & test data
+
+**All feature work happens against the mock backend — never against a real
+mailbox.** `spa/src/api/mock-backend.ts` is the in-memory demo register
+(3 fictional accounts, ~75 messages with threads, attachments metadata,
+contacts, calendars, tasks, drafts) behind the exact same `MailBackend`
+seam the real sidecar implements. `VITE_BACKEND=mock` is the dev default:
+
+```sh
+cd spa
+npx vite --port 5173        # mock dev server; hot reload on save
+```
+
+Extending test data is just editing the seed corpus in
+`mock-backend.ts` (accounts → folders → messages with `ago:` offsets) —
+new fixtures belong there, never in component code. New UI behaviors ship
+with their harness assertions in `spa/scripts/`:
+
+- every feature gets a `*-mock-check.mjs` (or extends an existing one) so
+  `npm run ci`-style verification stays offline-deterministic;
+- real-mode harnesses (`*-check.mjs` against a live sidecar) exist for
+  deployment-level proof — read their headers first, several write to a
+  real mailbox;
+- `docs/local/` is the place for anything private (ops notes, internal
+  screenshots); it is gitignored and never published.
+
+The mock corpus is fictional by design: `.example`-style addresses, no
+real names. Keep it that way.
+
 ## Verification discipline (every change)
 
 ```sh

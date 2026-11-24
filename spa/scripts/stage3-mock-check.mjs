@@ -123,7 +123,7 @@ await page.waitForSelector('[aria-label="Drafts composer"]', { state: "detached"
 result.steps.discardToast = await page.$eval(".toast", (el) => el.textContent?.trim().slice(0, 60)).catch(() => null);
 await page.waitForTimeout(1000);
 result.steps.discardRowGone = !(await page.isVisible('[role=option]:has-text("Mock composer round-trip")'));
-await page.screenshot({ path: "../docs/screenshots/stage3/stage3-mock-compose.png" });
+await page.screenshot({ path: "../docs/local/screenshots/stage3/stage3-mock-compose.png" });
 result.steps["stage3-mock-compose"] = "captured";
 
 /* 6. settings: the composer toggle exists and works in mock */

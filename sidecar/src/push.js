@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * tbweb — web-push (VAPID) for the Talaria PWA, Phase 4.
+ * talaria — web-push (VAPID) for the Talaria PWA, Phase 4.
  *
  * Holds the VAPID identity (keys arrive via compose env, never exposed beyond
  * `GET /push/public-key`, which only ever answers with the PUBLIC key), keeps
@@ -13,7 +13,7 @@
  *
  * Delivery model:
  *   - Subscriptions are stored under `<app dir>/data/push-subscriptions.json`
- *     (gitignored; override with TBWEB_PUSH_DB). In the deployed container the
+ *     (gitignored; override with TALARIA_PUSH_DB). In the deployed container the
  *     app runs from its writable /tmp copy, so the default path lands there —
  *     subscriptions are ephemeral across `--force-recreate` recreates, which
  *     is acceptable: the browser keeps its subscription and re-enabling is a
@@ -21,7 +21,7 @@
  *   - A push service answering 404/410 means the subscription is gone
  *     (browser expired it, permission revoked, site unregistered) — the
  *     subscription is pruned on sight. Any other failure is logged and kept.
- *   - No keys configured (TBWEB_VAPID_* empty) => every route degrades to an
+ *   - No keys configured (TALARIA_VAPID_* empty) => every route degrades to an
  *     explicit "not configured" answer and nothing else changes.
  */
 import fs from 'node:fs';
@@ -30,11 +30,11 @@ import { fileURLToPath } from 'node:url';
 import webpush from 'web-push';
 
 const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DB_PATH = process.env.TBWEB_PUSH_DB ?? path.join(APP_ROOT, 'data', 'push-subscriptions.json');
-const PUBLIC_KEY = process.env.TBWEB_VAPID_PUBLIC_KEY ?? '';
-const PRIVATE_KEY = process.env.TBWEB_VAPID_PRIVATE_KEY ?? '';
+const DB_PATH = process.env.TALARIA_PUSH_DB ?? path.join(APP_ROOT, 'data', 'push-subscriptions.json');
+const PUBLIC_KEY = process.env.TALARIA_VAPID_PUBLIC_KEY ?? '';
+const PRIVATE_KEY = process.env.TALARIA_VAPID_PRIVATE_KEY ?? '';
 /** Contact string push services attach to the VAPID claims. */
-const SUBJECT = process.env.TBWEB_PUSH_SUBJECT ?? 'mailto:admin@example.com';
+const SUBJECT = process.env.TALARIA_PUSH_SUBJECT ?? 'mailto:admin@example.com';
 
 let configured = false;
 
@@ -44,12 +44,12 @@ export function initPush() {
     try {
       webpush.setVapidDetails(SUBJECT, PUBLIC_KEY, PRIVATE_KEY);
       configured = true;
-      console.log('[tbweb] web-push configured (VAPID key present)');
+      console.log('[talaria] web-push configured (VAPID key present)');
     } catch (err) {
-      console.error(`[tbweb] web-push setup failed: ${err?.message ?? err}`);
+      console.error(`[talaria] web-push setup failed: ${err?.message ?? err}`);
     }
   } else {
-    console.warn('[tbweb] web-push disabled — TBWEB_VAPID_PUBLIC_KEY/PRIVATE_KEY not set');
+    console.warn('[talaria] web-push disabled — TALARIA_VAPID_PUBLIC_KEY/PRIVATE_KEY not set');
   }
 }
 
@@ -83,7 +83,7 @@ function saveSubscriptions(list) {
     fs.writeFileSync(tmp, `${JSON.stringify(list, null, 1)}\n`);
     fs.renameSync(tmp, DB_PATH);
   } catch (err) {
-    console.error(`[tbweb] push store write failed (${DB_PATH}): ${err?.message ?? err}`);
+    console.error(`[talaria] push store write failed (${DB_PATH}): ${err?.message ?? err}`);
   }
 }
 
@@ -117,7 +117,7 @@ export function addSubscription(body) {
     addedAt: new Date().toISOString(),
   });
   saveSubscriptions(list);
-  console.log(`[tbweb] push subscription stored (${list.length} total)`);
+  console.log(`[talaria] push subscription stored (${list.length} total)`);
   return { ok: true };
 }
 
@@ -169,7 +169,7 @@ export async function notifyAll(payload) {
         } else {
           failed += 1;
           console.warn(
-            `[tbweb] push delivery failed (${statusCode ?? 'no status'}): ${err?.message ?? err}`,
+            `[talaria] push delivery failed (${statusCode ?? 'no status'}): ${err?.message ?? err}`,
           );
         }
       }
@@ -178,8 +178,8 @@ export async function notifyAll(payload) {
   if (gone.length > 0) {
     const endpoints = new Set(gone);
     saveSubscriptions(loadSubscriptions().filter((s) => !endpoints.has(s.endpoint)));
-    console.log(`[tbweb] pruned ${gone.length} gone push subscription(s)`);
+    console.log(`[talaria] pruned ${gone.length} gone push subscription(s)`);
   }
-  console.log(`[tbweb] push fan-out: ${sent} sent, ${pruned} pruned, ${failed} failed`);
+  console.log(`[talaria] push fan-out: ${sent} sent, ${pruned} pruned, ${failed} failed`);
   return { sent, pruned, failed };
 }

@@ -2,7 +2,7 @@
   "name": "talaria-spa",
   "private": true,
   "version": "0.3.0",
-  "description": "Talaria — the unofficial Thunderbird web client (Phase 2+ Round 2): Vue 3 PWA mail-triage surface with a daisyUI theme system and settings, served by the tbweb sidecar.",
+  "description": "Talaria — the unofficial Thunderbird web client (Phase 2+ Round 2): Vue 3 PWA mail-triage surface with a daisyUI theme system and settings, served by the sidecar.",
   "type": "module",
   "license": "MPL-2.0",
   "scripts": {

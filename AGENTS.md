@@ -19,17 +19,17 @@ leave Thunderbird.
 
 ## Deployment model
 
-- The sidecar is a small Node 22 service that shares the Thunderbird
-  container's network namespace (`network_mode: service:thunderbird` in
-  compose) so the addon stays loopback-only. See
-  `sidecar/compose.example.yaml` for the shape.
-- The SPA build target is `spa/vite.config.ts` → `outDir: ../sidecar/public`;
-  the sidecar serves that dir. **Deploy SPA = `npm run build` in `spa/`**
-  (no container action). **Deploy sidecar source = recreate the container**
-  (it copies `/app` → `/tmp/app` at boot, so source changes need the
-  recreate; `public/` changes go live immediately when bind-mounted).
+- The published image **ghcr.io/fsx8/talaria** (built by GitHub Actions on
+  every push to main, `Dockerfile` at the repo root) contains the sidecar
+  AND the built SPA. In deployment it shares the Thunderbird container's
+  network namespace (`network_mode: service:thunderbird` in compose) so
+  the addon stays loopback-only. See `sidecar/compose.example.yaml` for
+  the shape; push subscriptions persist in a volume at `/app/data`.
+- Deploy = `docker compose pull talaria && docker compose up -d talaria`
+  on the deployment host (or however your stack updates images). There is
+  no bind-mount and no in-container build step.
 - After any **Thunderbird container restart**: recreate the addon sidecar
-  AND the tbweb sidecar — a plain container `restart` re-attaches the TB
+  AND the talaria sidecar — a plain container `restart` re-attaches the TB
   netns and the shared-netns services die.
 
 ## Verification discipline (every change)
@@ -124,8 +124,8 @@ record-sheet reader/composer sheets, per-account hue chips. Contract:
   data never leave the machine (gitignored).
 - `origin` is the **public** repository. Anything committed here is
   published: no real hostnames, account addresses, tokens, or mailbox
-  content. Private ops notes belong in untracked local files.
-- `docs/screenshots/` subdirectories are harness output (gitignored); the
-  curated public shots live directly in `docs/screenshots/`.
+  content. Private ops notes belong in `docs/local/` (gitignored).
+- `docs/screenshots/` holds only the curated README trio (whitelisted in
+  `.gitignore`); harness output goes to `docs/local/screenshots/`.
 - If you also keep a private infrastructure/compose repo, cross-repo facts
   are duplicated intentionally — update both sides when they change.

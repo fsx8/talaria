@@ -6,8 +6,8 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 
-const BASE = "http://thunderbird:8942";
-const SHOTS = "../docs/screenshots/round3";
+const BASE = process.env.TALARIA_BASE ?? "http://thunderbird:8942";
+const SHOTS = "../docs/local/screenshots/round3";
 
 function findChrome() {
   const cacheRoot = join(process.env.HOME ?? "/root", ".cache", "ms-playwright");

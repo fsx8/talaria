@@ -35,6 +35,6 @@ await page.goto("http://localhost:5173/settings", { waitUntil: "domcontentloaded
 await page.waitForTimeout(800);
 const actionsCard = await page.isVisible("text=Mark as read on open");
 const demoNote = await page.isVisible("text=Demo data");
-await page.screenshot({ path: "../docs/screenshots/round3/w1-mock-demo.png" });
+await page.screenshot({ path: "../docs/local/screenshots/round3/w1-mock-demo.png" });
 console.log(JSON.stringify({ rows, selectVisible, toast, actionsCard, demoNote, errors }));
 await browser.close();

@@ -3,10 +3,16 @@ dist/
 .vite/
 dev-dist/
 
-# Private ops notes — local only, never published.
-HANDOVER.md
+# Build output — the SPA builds straight into the sidecar's static dir.
+sidecar/public/
 
-# Harness screenshot output. Curated public shots live directly in
-# docs/screenshots/ (tracked); real-mode captures are never committed.
-docs/screenshots/real-*
-docs/screenshots/*/
+# Private local files: ops notes, internal screenshots, secrets-adjacent
+# material. Everything in here stays on this machine.
+docs/local/
+
+# Public screenshots: only the README trio is tracked; harness output and
+# anything else dropped in here never is.
+docs/screenshots/*
+!docs/screenshots/desktop.png
+!docs/screenshots/mobile-list.png
+!docs/screenshots/mobile-reader.png

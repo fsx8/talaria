@@ -21,10 +21,11 @@ const browser = await chromium.launch({ executablePath: findChrome(), args: ["--
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await context.newPage();
 
-const result = { url: "http://thunderbird:8942", accountsSeen: [], rowsRendered: false, folioUnread: null, errors: [] };
+const BASE = process.env.TALARIA_BASE ?? "http://thunderbird:8942";
+const result = { url: BASE, accountsSeen: [], rowsRendered: false, folioUnread: null, errors: [] };
 page.on("pageerror", (err) => result.errors.push(String(err).slice(0, 120)));
 
-await page.goto("http://thunderbird:8942", { waitUntil: "domcontentloaded" });
+await page.goto(BASE, { waitUntil: "domcontentloaded" });
 
 // Real accounts render in the rail (first identity name or email).
 try {
@@ -65,6 +66,6 @@ try {
   result.folioUnread = null;
 }
 
-await page.screenshot({ path: "../docs/screenshots/real-desktop.png" });
+await page.screenshot({ path: "../docs/local/screenshots/real-desktop.png" });
 console.log(JSON.stringify(result, null, 1));
 await browser.close();

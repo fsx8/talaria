@@ -4,11 +4,11 @@ import vue from "@vitejs/plugin-vue";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
-// Same-origin deploy: the tbweb sidecar (sidecar) serves the built
+// Same-origin deploy: the sidecar (sidecar/) serves the built
 // SPA from ../sidecar/public and answers /api/* + /events itself. In dev we proxy
 // those to a reachable sidecar (default http://thunderbird:8942, reachable
-// from the compose_default network; override with TBWEB_ORIGIN).
-const sidecarOrigin = process.env.TBWEB_ORIGIN ?? "http://thunderbird:8942";
+// from the compose_default network; override with TALARIA_ORIGIN).
+const sidecarOrigin = process.env.TALARIA_ORIGIN ?? "http://thunderbird:8942";
 const pkgVersion: string = (JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8"),
 ) as { version: string }).version;

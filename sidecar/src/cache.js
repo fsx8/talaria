@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * tbweb result cache (Round-2 perf).
+ * talaria result cache (Round-2 perf).
  *
  * A small in-memory TTL cache with stale-while-revalidate for the MCP tool
  * calls that are safe to reuse: read-only list/search tools whose answers

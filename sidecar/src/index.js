@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * tbweb — unofficial Thunderbird web client, Phase 1 sidecar.
+ * talaria — unofficial Thunderbird web client, Phase 1 sidecar.
  *
  * Runs inside the thunderbird container's network namespace
  * (`network_mode: "service:thunderbird"`), where it can reach the commonpost
@@ -68,10 +68,10 @@ const TOKEN = process.env.COMMONPOST_MCP_TOKEN ?? '';
 const COMMONPOST_PORTS = parsePortRange(process.env.COMMONPOST_PORTS ?? '8780-8789');
 
 /** Must mirror the current mcp-bridge.cjs release so the add-on stays silent (see file docblock). */
-const BRIDGE_HEADER = process.env.TBWEB_BRIDGE_HEADER ?? '0.20.0; packaging=file';
+const BRIDGE_HEADER = process.env.TALARIA_BRIDGE_HEADER ?? '0.20.0; packaging=file';
 
 /** MCP protocol version offered in initialize; commonpost v0.26.1 supports 2024-10-07…2025-11-25. */
-const MCP_PROTOCOL_VERSION = process.env.TBWEB_MCP_PROTOCOL ?? '2025-06-18';
+const MCP_PROTOCOL_VERSION = process.env.TALARIA_MCP_PROTOCOL ?? '2025-06-18';
 
 const SSE_HEARTBEAT_MS = Number(process.env.SSE_HEARTBEAT_MS ?? 15000);
 const SSE_POLL_MS = Number(process.env.SSE_POLL_MS ?? 60000);
@@ -82,7 +82,7 @@ const BODY_LIMIT = Number(process.env.BODY_LIMIT ?? 8 * 1024 * 1024);
 /**
  * Cheap unread probe used by the SSE poller. `query: ""` matches all messages,
  * countOnly keeps the answer to a single integer. Override with
- * TBWEB_POLL_ARGS (JSON), e.g. to scope to one folderPath.
+ * TALARIA_POLL_ARGS (JSON), e.g. to scope to one folderPath.
  * @type {{name: string, arguments: Record<string, unknown>}}
  */
 const POLL_CALL = /** @type {{name: string, arguments: Record<string, unknown>}} */ ({
@@ -95,28 +95,28 @@ const POLL_CALL = /** @type {{name: string, arguments: Record<string, unknown>}}
   },
 });
 
-const pollCallOverride = process.env.TBWEB_POLL_CALL;
+const pollCallOverride = process.env.TALARIA_POLL_CALL;
 if (pollCallOverride) {
   try {
     Object.assign(POLL_CALL, JSON.parse(pollCallOverride));
   } catch (err) {
-    console.error(`[tbweb] TBWEB_POLL_CALL is not valid JSON: ${err?.message ?? err}`);
+    console.error(`[talaria] TALARIA_POLL_CALL is not valid JSON: ${err?.message ?? err}`);
     process.exit(1);
   }
 }
 
 /** Prewarm interval for the /api/bootstrap cache keys (Round-2 perf). */
-const PREWARM_MS = Number(process.env.TBWEB_PREWARM_MS ?? 300000);
+const PREWARM_MS = Number(process.env.TALARIA_PREWARM_MS ?? 300000);
 
 // Static root: default is the app's own public/ snapshot; deployments can
-// point it at the live bind-mount (TBWEB_PUBLIC_DIR=/app/public) so SPA
+// point it at the live bind-mount (TALARIA_PUBLIC_DIR=/app/public) so SPA
 // builds go live without recreating the container.
-const PUBLIC_DIR = process.env.TBWEB_PUBLIC_DIR
-  ? path.resolve(process.env.TBWEB_PUBLIC_DIR)
+const PUBLIC_DIR = process.env.TALARIA_PUBLIC_DIR
+  ? path.resolve(process.env.TALARIA_PUBLIC_DIR)
   : path.join(APP_ROOT, 'public');
 
 if (!TOKEN) {
-  console.error('[tbweb] COMMONPOST_MCP_TOKEN is empty — refusing to start (fail-closed)');
+  console.error('[talaria] COMMONPOST_MCP_TOKEN is empty — refusing to start (fail-closed)');
   process.exit(1);
 }
 
@@ -219,7 +219,7 @@ async function probeCommonpost(force = false) {
   const r = await rpc('initialize', {
     protocolVersion: MCP_PROTOCOL_VERSION,
     capabilities: {},
-    clientInfo: { name: 'tbweb', version: '0.1.0' },
+    clientInfo: { name: 'talaria', version: '0.1.0' },
   });
   let value;
   if (r.ok && r.result && typeof r.result === 'object') {
@@ -272,7 +272,7 @@ async function callToolData(name, args) {
  * the arguments — and therefore the cache key — stay stable within the hour.
  * /api/bootstrap's `recent` and the prewarm deliberately use the EXACT
  * arguments the SPA's boot query sends, so one cache entry serves both.
- * KEEP IN SYNC with compose/tbweb/spa/src/api/real-backend.ts.
+ * KEEP IN SYNC with spa/src/api/real-backend.ts.
  * @returns {Record<string, unknown>}
  */
 function recentQueryArgs() {
@@ -414,9 +414,9 @@ async function pollUnread() {
     lastPollError = null;
     if (lastUnread === null) {
       lastUnread = count; // baseline, no event
-      console.log(`[tbweb] unread baseline: ${count}`);
+      console.log(`[talaria] unread baseline: ${count}`);
     } else if (count !== lastUnread) {
-      console.log(`[tbweb] unread changed: ${lastUnread} -> ${count}`);
+      console.log(`[talaria] unread changed: ${lastUnread} -> ${count}`);
       // Mail moved: search results and folder tallies may be stale from
       // here on — flush the mail-derived cache keys BEFORE any client can
       // react, then re-warm them so the next SPA refresh / bootstrap call
@@ -428,7 +428,7 @@ async function pollUnread() {
     }
   } catch (err) {
     lastPollError = String(err?.message ?? err);
-    console.warn(`[tbweb] poll failed: ${lastPollError}`);
+    console.warn(`[talaria] poll failed: ${lastPollError}`);
   }
 }
 
@@ -691,18 +691,18 @@ async function main() {
   push.initPush();
   const cp = await probeCommonpost(true);
   console.log(
-    `[tbweb] commonpost ${cp.reachable ? `reachable on 127.0.0.1:${cp.port}` : 'UNREACHABLE'} serverInfo=${JSON.stringify(cp.serverInfo)}`,
+    `[talaria] commonpost ${cp.reachable ? `reachable on 127.0.0.1:${cp.port}` : 'UNREACHABLE'} serverInfo=${JSON.stringify(cp.serverInfo)}`,
   );
   await pollUnread();
   prewarmBootstrap(); // the first visitor of the day gets a warm bootstrap
 
   await app.listen({ port: LISTEN_PORT, host: LISTEN_HOST });
-  console.log(`[tbweb] listening on ${LISTEN_HOST}:${LISTEN_PORT} (static: ${PUBLIC_DIR})`);
+  console.log(`[talaria] listening on ${LISTEN_HOST}:${LISTEN_PORT} (static: ${PUBLIC_DIR})`);
 }
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {
-    console.log(`[tbweb] ${sig} received, shutting down`);
+    console.log(`[talaria] ${sig} received, shutting down`);
     app
       .close()
       .catch(() => {})
@@ -711,6 +711,6 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
 }
 
 main().catch((err) => {
-  console.error('[tbweb] fatal:', err);
+  console.error('[talaria] fatal:', err);
   process.exit(1);
 });

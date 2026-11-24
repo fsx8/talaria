@@ -9,8 +9,8 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 
-const BASE = "http://thunderbird:8942";
-const SHOTS = "../docs/screenshots/stage3";
+const BASE = process.env.TALARIA_BASE ?? "http://thunderbird:8942";
+const SHOTS = "../docs/local/screenshots/stage3";
 const FIELDS = ["date", "author", "recipients", "ccList", "subject", "read", "flagged", "tags", "preview"];
 const STAMP = new Date().toISOString().replace(/\.\d+Z$/, "Z");
 

@@ -1,0 +1,88 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  spa:
+    name: typecheck + build (spa)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: spa/package-lock.json
+      - name: install
+        working-directory: spa
+        run: npm ci --no-fund --no-audit
+      - name: typecheck
+        working-directory: spa
+        run: npx vue-tsc --noEmit
+      - name: build
+        working-directory: spa
+        run: npm run build
+
+  sidecar:
+    name: sidecar (syntax + prod install)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: sidecar/package-lock.json
+      - name: prod install
+        working-directory: sidecar
+        run: npm ci --omit=dev --no-fund --no-audit
+      - name: syntax
+        working-directory: sidecar
+        run: node --check src/index.js && node --check src/cache.js && node --check src/push.js
+
+  mock-harnesses:
+    name: regression harnesses (mock)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: spa/package-lock.json
+      - name: install
+        working-directory: spa
+        run: npm ci --no-fund --no-audit
+      - name: install chromium
+        working-directory: spa
+        run: npx -y playwright@1.58.0 install chromium --with-deps
+      - name: dev server (mock, :5173)
+        working-directory: spa
+        run: |
+          npx vite --port 5173 &
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null http://localhost:5173 && break
+            sleep 2
+          done
+      - name: dev server (mock, :5174)
+        working-directory: spa
+        run: |
+          npx vite --port 5174 --host 127.0.0.1 --strictPort &
+          for i in $(seq 1 40); do
+            curl -sf -o /dev/null http://127.0.0.1:5174 && break
+            sleep 2
+          done
+      - name: run mock harnesses
+        working-directory: spa
+        run: |
+          node scripts/w1-mock-check.mjs
+          node scripts/stage3-mock-check.mjs
+          MOCK_BASE=http://127.0.0.1:5174 node scripts/stage2-mock-check.mjs
+          MODE=mock node scripts/phase4-check.mjs

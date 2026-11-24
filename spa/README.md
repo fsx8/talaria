@@ -22,7 +22,7 @@ src/
   api/          the interface seam (Bulwark pattern)
     types.ts               domain types (Account, Folder, MessageSummary, Contact…)
     backend-interface.ts   the MailBackend contract (+ optional PushBackend)
-    real-backend.ts        tbweb sidecar: POST /api/tools/call + SSE /events + /push/*
+    real-backend.ts        the sidecar: POST /api/tools/call + SSE /events + /push/*
     mock-backend.ts        seeded demo register (3 accounts, ~75 messages, threads,
                            contacts, calendars, tasks)
     mime.ts                client-side MIME extraction for .eml export +
@@ -95,7 +95,7 @@ scripts/        regression harnesses (Playwright): real-check, w1-check,
 ```sh
 npm install
 npm run dev        # mock backend; proxies /api,/events → http://thunderbird:8942
-                   #   (override the proxy target with TBWEB_ORIGIN=http://host:port)
+                   #   (override the proxy target with TALARIA_ORIGIN=http://host:port)
 npm run build      # vue-tsc --noEmit && vite build → ../sidecar/public (deployed in place)
 npm run icons      # regenerate the PWA PNGs from the authored mark
 npm run shots      # Playwright screenshots (dev server must be running)
@@ -108,7 +108,7 @@ npm run shots      # Playwright screenshots (dev server must be running)
   scheduled "arrivals" that fire the same `mail` event the real sidecar sends,
   so the live folio flip is demoable offline. The UI labels mock sessions
   "Demo data".
-- `VITE_BACKEND=real` (default in production builds): the tbweb sidecar,
+- `VITE_BACKEND=real` (default in production builds): the sidecar,
   same-origin. `POST /api/tools/call` for tools, `GET /events` for live
   unread changes, `GET /api/health` for the status dot in the rail footer.
 

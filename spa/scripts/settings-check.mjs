@@ -5,8 +5,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 
-const BASE = "http://thunderbird:8942";
-const SHOTS = "../docs/screenshots/settings";
+const BASE = process.env.TALARIA_BASE ?? "http://thunderbird:8942";
+const SHOTS = "../docs/local/screenshots/settings";
 mkdirSync(SHOTS, { recursive: true });
 
 function findChrome() {

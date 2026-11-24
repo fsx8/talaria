@@ -1,4 +1,4 @@
-# tbweb — the Talaria sidecar
+# talaria — the sidecar
 
 A small Node 22 service (Fastify, two dependencies) that sits between the PWA
 and Thunderbird: it serves the built SPA, reverse-proxies the commonpost
@@ -30,12 +30,12 @@ browser ──HTTPS──▶ authenticating proxy ──▶ sidecar ──HTTP(l
 ## Web push
 
 Generate VAPID keys once (`npx web-push generate-vapid-keys`) and pass them
-via `TBWEB_VAPID_PUBLIC_KEY` / `TBWEB_VAPID_PRIVATE_KEY`. The **private key
+via `TALARIA_VAPID_PUBLIC_KEY` / `TALARIA_VAPID_PRIVATE_KEY`. The **private key
 lives only in this process**; the SPA fetches the public key from
 `/push/public-key`. Every unread-count change (the SSE `mail` poll) also fans
 a `{unread, ts}` payload out to all stored subscriptions; gone subscriptions
 (push service answers 404/410) are pruned automatically. Subscriptions live
-in `data/push-subscriptions.json` (gitignored) — point `TBWEB_PUSH_DB` at a
+in `data/push-subscriptions.json` (gitignored) — point `TALARIA_PUSH_DB` at a
 persistent volume if they should survive container recreation.
 
 ## Security model
@@ -65,7 +65,7 @@ SPA-falls-back for `/api/*` or `/push/*`.
   anyway (parses `content[0].text`, ignores trailing text items).
 - Unread probe (SSE poller): `searchMessages {query:"", unreadOnly:true,
   countOnly:true, maxResults:1}` — headers only, one integer back. Override
-  with `TBWEB_POLL_CALL` (JSON, e.g. to scope to a `folderPath`).
+  with `TALARIA_POLL_CALL` (JSON, e.g. to scope to a `folderPath`).
 
 ## Environment
 
@@ -75,14 +75,14 @@ SPA-falls-back for `/api/*` or `/push/*`.
 | `HOST` | `0.0.0.0` | listen host |
 | `COMMONPOST_MCP_TOKEN` | — | **required**; Bearer token for the add-on |
 | `COMMONPOST_PORTS` | `8780-8789` | probe/failover range |
-| `TBWEB_BRIDGE_HEADER` | `0.20.0; packaging=file` | bridge-version header value |
-| `TBWEB_MCP_PROTOCOL` | `2025-06-18` | MCP protocolVersion offered |
+| `TALARIA_BRIDGE_HEADER` | `0.20.0; packaging=file` | bridge-version header value |
+| `TALARIA_MCP_PROTOCOL` | `2025-06-18` | MCP protocolVersion offered |
 | `SSE_HEARTBEAT_MS` / `SSE_POLL_MS` | `15000` / `60000` | SSE timers |
-| `TBWEB_POLL_CALL` | unread probe above | full `{name, arguments}` override |
-| `TBWEB_PUBLIC_DIR` | `./public` | static root (point at a bind-mounted SPA build to deploy by rebuild) |
-| `TBWEB_VAPID_PUBLIC_KEY` / `TBWEB_VAPID_PRIVATE_KEY` | — (push disabled without them) | VAPID identity for web-push |
-| `TBWEB_PUSH_SUBJECT` | `mailto:admin@example.com` | contact string carried in VAPID claims |
-| `TBWEB_PUSH_DB` | `<app dir>/data/push-subscriptions.json` | subscription store (gitignored) |
+| `TALARIA_POLL_CALL` | unread probe above | full `{name, arguments}` override |
+| `TALARIA_PUBLIC_DIR` | `./public` | static root (point at a bind-mounted SPA build to deploy by rebuild) |
+| `TALARIA_VAPID_PUBLIC_KEY` / `TALARIA_VAPID_PRIVATE_KEY` | — (push disabled without them) | VAPID identity for web-push |
+| `TALARIA_PUSH_SUBJECT` | `mailto:admin@example.com` | contact string carried in VAPID claims |
+| `TALARIA_PUSH_DB` | `<app dir>/data/push-subscriptions.json` | subscription store (gitignored) |
 | `HEALTH_CACHE_MS`, `RPC_TIMEOUT_MS`, `BODY_LIMIT`, `LOG_LEVEL` | `5000`, `20000`, `8 MiB`, `info` | tuning |
 
 ## Run

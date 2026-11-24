@@ -10,7 +10,7 @@
  *   MODE=real  — the live sidecar: real thread, real contacts, real agenda,
  *                real web-push subscribe + receipt.
  *
- * Output: docs/screenshots/phase4/*.png and a JSON verdict.
+ * Output: docs/local/screenshots/phase4/*.png and a JSON verdict.
  *
  * Env: MODE=mock|real (default mock), BASE (default per mode), SHOTS_OUT.
  */
@@ -24,7 +24,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const MODE = process.env.MODE ?? "mock";
 const BASE =
   process.env.BASE ?? (MODE === "real" ? "http://thunderbird:8942" : "http://localhost:5173");
-const out = resolve(here, process.env.SHOTS_OUT ?? "../../docs/screenshots/phase4");
+const out = resolve(here, process.env.SHOTS_OUT ?? "../../docs/local/screenshots/phase4");
 mkdirSync(out, { recursive: true });
 
 function findChrome() {

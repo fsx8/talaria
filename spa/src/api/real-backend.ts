@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Real backend: the tbweb sidecar, same-origin. Every MCP tool call goes
+ * Real backend: the sidecar, same-origin. Every MCP tool call goes
  * through POST /api/tools/call ({ name, arguments }) which answers
  * { ok: true, data } or { ok: false, error }; live changes arrive over
  * GET /events (SSE: hello / mail { unread, previous, ts } / heartbeats).
@@ -394,7 +394,7 @@ function mapTask(raw: Record<string, unknown>): TaskInfo {
  * The timestamp is floored to the hour so that identical arguments — and
  * therefore identical sidecar cache keys and /api/bootstrap `recent`
  * prewarm coverage — stay stable within the hour. KEEP THIS FORMULA IN SYNC
- * with `recentQueryArguments` in compose/tbweb/app/src/index.js.
+ * with `recentQueryArguments` in sidecar/src/index.js.
  */
 function recentQueryArguments(): string {
   return new Date(Math.floor((Date.now() - 14 * 86_400_000) / 3_600_000) * 3_600_000).toISOString();

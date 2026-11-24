@@ -57,6 +57,22 @@ Thunderbird anywhere near it (`VITE_BACKEND=mock`).
 
 ## Quickstart
 
+**With Docker (recommended)** — the image contains the sidecar and the
+built SPA:
+
+```sh
+echo "COMMONPOST_MCP_TOKEN=<the addon's stable token>" >> .env
+docker compose -f sidecar/compose.example.yaml up -d talaria
+```
+
+Generate VAPID keys once with `npx web-push generate-vapid-keys` and add
+`TALARIA_VAPID_PUBLIC_KEY` / `TALARIA_VAPID_PRIVATE_KEY` to `.env` for web
+push (optional — push is disabled without them). Then put the sidecar
+behind your authenticating proxy and open it from a desktop or phone
+browser. `docker compose pull talaria` updates to the latest build.
+
+**From source** (Node.js 22):
+
 ```sh
 # 1. Build the SPA (writes straight into sidecar/public/)
 cd spa
@@ -67,14 +83,10 @@ npm run build
 cd ../sidecar
 npm ci
 COMMONPOST_MCP_TOKEN=<the addon's stable token> \
-TBWEB_VAPID_PUBLIC_KEY=<public key> \
-TBWEB_VAPID_PRIVATE_KEY=<private key> \
+TALARIA_VAPID_PUBLIC_KEY=<public key> \
+TALARIA_VAPID_PRIVATE_KEY=<private key> \
 npm start                                # listens on 0.0.0.0:8942
 ```
-
-Generate the VAPID keys once with `npx web-push generate-vapid-keys`
-(optional — web push is disabled without them). Then put the sidecar behind
-your authenticating proxy and open it from a desktop or phone browser.
 
 Environment contract (all sidecar env vars documented in
 [`sidecar/README.md`](sidecar/README.md)):
@@ -82,11 +94,9 @@ Environment contract (all sidecar env vars documented in
 | Var | Meaning |
 | --- | --- |
 | `COMMONPOST_MCP_TOKEN` | **required** — the addon's stable token; the sidecar refuses to start without it |
-| `TBWEB_VAPID_PUBLIC_KEY` / `TBWEB_VAPID_PRIVATE_KEY` | VAPID identity for web push (private key never leaves the process) |
+| `TALARIA_VAPID_PUBLIC_KEY` / `TALARIA_VAPID_PRIVATE_KEY` | VAPID identity for web push (private key never leaves the process) |
 | `PORT` | listen port (default `8942`) |
 | `COMMONPOST_PORTS` | addon probe/failover range (default `8780-8789`) |
-
-`sidecar/compose.example.yaml` shows a container-ready shape.
 
 ## Features
 
