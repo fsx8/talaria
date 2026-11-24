@@ -5,66 +5,36 @@
 import { defineStore } from "pinia";
 import { backendKind } from "../api";
 
-export type ThemePreference = "system" | "light" | "dark";
-
-/** Top-level view behind the rail switcher: mail register, contacts, agenda. */
-export type ActiveView = "mail" | "contacts" | "agenda";
-
-const STORAGE_KEY = "talaria.theme";
-
-function readPreference(): ThemePreference {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw === "light" || raw === "dark" || raw === "system") return raw;
-  } catch {
-    /* storage unavailable — system default */
-  }
-  return "system";
-}
-
-function resolveTheme(pref: ThemePreference): "light" | "dark" {
-  if (pref !== "system") return pref;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function applyTheme(resolved: "light" | "dark") {
-  document.documentElement.dataset.theme = resolved;
-}
+/** Top-level view behind the rail switcher: mail register, contacts, agenda, settings. */
+export type ActiveView = "mail" | "contacts" | "agenda" | "settings";
 
 export const useUiStore = defineStore("ui", {
   state: () => ({
     backendKind: backendKind(),
-    themePreference: readPreference() as ThemePreference,
-    /** Which view owns the content panes (switcher in the rail). */
+    /** Which view owns the content panes (switcher in the rail, gear in the top bar). */
     activeView: "mail" as ActiveView,
     /** Phone-only: which stacked view owns the screen. */
     phoneView: "list" as "list" | "reader",
     /** Tablet/phone: the register rail opens as a drawer. */
     railDrawerOpen: false,
+    /** Stage 2: the keyboard-shortcuts help overlay. */
+    shortcutsOpen: false,
   }),
   getters: {
-    resolvedTheme(): "light" | "dark" {
-      return resolveTheme(this.themePreference);
-    },
-    isPhone(): boolean {
+    isPhone(state): boolean {
+      void state;
       return window.matchMedia("(max-width: 767px)").matches;
     },
   },
   actions: {
-    initTheme() {
-      applyTheme(this.resolvedTheme);
-      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-        if (this.themePreference === "system") applyTheme(this.resolvedTheme);
+    /** Deep-link + back/forward support for the one routed view (/settings).
+     *  The sidecar's SPA fallback serves index.html for extension-less paths. */
+    initViewRouting() {
+      if (window.location.pathname === "/settings") this.activeView = "settings";
+      window.addEventListener("popstate", () => {
+        this.activeView = window.location.pathname === "/settings" ? "settings" : "mail";
+        this.railDrawerOpen = false;
       });
-    },
-    setTheme(pref: ThemePreference) {
-      this.themePreference = pref;
-      try {
-        localStorage.setItem(STORAGE_KEY, pref);
-      } catch {
-        /* ignore */
-      }
-      applyTheme(this.resolvedTheme);
     },
     openReader() {
       this.phoneView = "reader";
@@ -74,7 +44,13 @@ export const useUiStore = defineStore("ui", {
       this.phoneView = "list";
     },
     openView(view: ActiveView) {
-      this.activeView = view;
+      if (this.activeView !== view) {
+        this.activeView = view;
+        const target = view === "settings" ? "/settings" : "/";
+        if (window.location.pathname !== target) {
+          window.history.pushState({ view }, "", target);
+        }
+      }
       this.railDrawerOpen = false;
     },
     toggleRailDrawer() {
@@ -82,6 +58,12 @@ export const useUiStore = defineStore("ui", {
     },
     closeRailDrawer() {
       this.railDrawerOpen = false;
+    },
+    openShortcuts() {
+      this.shortcutsOpen = true;
+    },
+    closeShortcuts() {
+      this.shortcutsOpen = false;
     },
   },
 });

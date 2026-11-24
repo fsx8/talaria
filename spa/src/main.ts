@@ -9,11 +9,13 @@ import "./style.css";
 import { createPinia } from "pinia";
 import { createApp } from "vue";
 import App from "./App.vue";
+import { useSettingsStore } from "./stores/settings";
 import { useUiStore } from "./stores/ui";
 
 const app = createApp(App);
 app.use(createPinia());
 
-useUiStore().initTheme();
+useSettingsStore().init();
+useUiStore().initViewRouting();
 
 app.mount("#app");

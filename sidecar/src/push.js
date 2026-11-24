@@ -4,19 +4,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * tbweb — web-push (VAPID) for the Talaria PWA.
+ * tbweb — web-push (VAPID) for the Talaria PWA, Phase 4.
  *
- * Holds the VAPID identity (keys arrive via environment variables, never
- * exposed beyond
+ * Holds the VAPID identity (keys arrive via compose env, never exposed beyond
  * `GET /push/public-key`, which only ever answers with the PUBLIC key), keeps
  * browser push subscriptions in a small JSON file, and fans `event: mail`
  * changes out to every stored subscription via the `web-push` library.
  *
  * Delivery model:
  *   - Subscriptions are stored under `<app dir>/data/push-subscriptions.json`
- *     (gitignored; override with TBWEB_PUSH_DB). Point TBWEB_PUSH_DB at a
- *     persistent volume if subscriptions should survive container recreation —
- *     otherwise browsers keep their subscription and re-enabling is a
+ *     (gitignored; override with TBWEB_PUSH_DB). In the deployed container the
+ *     app runs from its writable /tmp copy, so the default path lands there —
+ *     subscriptions are ephemeral across `--force-recreate` recreates, which
+ *     is acceptable: the browser keeps its subscription and re-enabling is a
  *     one-click action.
  *   - A push service answering 404/410 means the subscription is gone
  *     (browser expired it, permission revoked, site unregistered) — the

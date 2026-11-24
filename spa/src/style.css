@@ -3,112 +3,154 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /*
- * The Registrar — Talaria's visual world.
+ * Talaria theming — daisyUI 5 on Tailwind CSS v4.
  *
- * Light theme = "day register": pale cool paper with a barely-there drift,
- * iron-ink navy-black text, faint blue rulings only where data is tabular,
- * one registrar-red accent reserved for the masthead rule and unread marks.
- * Dark theme = "night register": the night-desk chart plate — deep ink navy
- * ground, chalk ink. State changes flip in two-frame steps (≤120 ms); no
- * long eases anywhere.
+ * Round 2 moved the visual system from hand-rolled "Registrar" custom
+ * properties onto daisyUI's semantic tokens (base-100/200/300, base-content,
+ * primary/secondary/accent, neutral, info/success/warning/error). Components
+ * speak only semantic classes, so every theme — the two Talaria identities
+ * below plus daisyUI's built-ins — restyles the whole app with no component
+ * change.
+ *
+ * Talaria Day / Talaria Night carry the Thunderbird-adjacent blue identity:
+ * deep blue #0a6ce0 as the working primary (white-on-primary text ≥ 4.5:1),
+ * bright Thunderbird blue #0a84ff as the accent (masthead rule, unread marks),
+ * and cool blue-paper grounds instead of the old warm brown ones. The
+ * registrar red survives only as `error`, where it always belonged.
+ *
+ * The Registrar's structural identity is untouched: the record-sheet reader,
+ * agate tabular meta, and blue data-row rulings (now `border-base-300`).
  */
 
 @import "tailwindcss";
 
-/* ---------- theme tokens ---------- */
+@plugin "daisyui" {
+  themes: all;
+  logs: false;
+  exclude: scrollbar;
+}
+
+/* ---------- Talaria identities ---------- */
+
+@plugin "daisyui/theme" {
+  name: "talaria-light";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: #fcfdfe;
+  --color-base-200: #f2f6fa;
+  --color-base-300: #dde6ef;
+  --color-base-content: #16233a;
+  --color-primary: #0a6ce0;
+  --color-primary-content: #ffffff;
+  --color-secondary: #3e5c86;
+  --color-secondary-content: #f2f7fc;
+  --color-accent: #0a84ff;
+  --color-accent-content: #05121f;
+  --color-neutral: #1e2a3c;
+  --color-neutral-content: #e8f0f9;
+  --color-info: #0f74d4;
+  --color-info-content: #f0f7ff;
+  --color-success: #1a7f4e;
+  --color-success-content: #f2faf5;
+  --color-warning: #9a6a1e;
+  --color-warning-content: #fffaf0;
+  --color-error: #a83a32;
+  --color-error-content: #fff5f2;
+  --radius-selector: 0.25rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "talaria-dark";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #182230;
+  --color-base-200: #101825;
+  --color-base-300: #253244;
+  --color-base-content: #e6ecf5;
+  --color-primary: #2f8bff;
+  --color-primary-content: #05121f;
+  --color-secondary: #7d9ac4;
+  --color-secondary-content: #0d1826;
+  --color-accent: #5db2ff;
+  --color-accent-content: #05121f;
+  --color-neutral: #202e42;
+  --color-neutral-content: #dbe6f3;
+  --color-info: #3f9df0;
+  --color-info-content: #0b1522;
+  --color-success: #4fae7e;
+  --color-success-content: #0b1522;
+  --color-warning: #d9a03c;
+  --color-warning-content: #0b1522;
+  --color-error: #e05a50;
+  --color-error-content: #1b0e0c;
+  --radius-selector: 0.25rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0.25rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* ---------- app tokens mapped onto the active theme ---------- */
 
 :root {
-  /* paper + ink */
-  --paper: #f3f2ee;
-  --paper-drift-1: rgba(59, 79, 112, 0.05);
-  --paper-drift-2: rgba(168, 58, 50, 0.035);
-  --sheet: #fbfaf7;
-  --sheet-shadow: rgba(28, 36, 48, 0.1);
-  --ink: #1c2430;
-  --ink-2: #45526a;
-  --ink-3: #5a6880;
-  --invoked-ink: #fbfaf7; /* text on accent fills */
+  /* account code chips: six stable hues drawn from the semantic palette, so
+   * they stay legible in every theme (legend = the account list) */
+  --acct-0: var(--color-primary);
+  --acct-1: var(--color-secondary);
+  --acct-2: var(--color-success);
+  --acct-3: var(--color-warning);
+  --acct-4: var(--color-error);
+  --acct-5: var(--color-info);
 
-  /* rulings */
-  --rule: #ddd9ce;
-  --rule-blue: #ccd6e4;
-  --rule-strong: #c2bdb0;
+  /* the quiet drift behind the app ground: one blue, one error-tinted corner */
+  --paper-drift-1: color-mix(in oklab, var(--color-primary) 6%, transparent);
+  --paper-drift-2: color-mix(in oklab, var(--color-error) 4%, transparent);
 
-  /* the registrar red — masthead rule, unread marks, record errors */
-  --accent: #a83a32;
-  --accent-soft: rgba(168, 58, 50, 0.09);
+  /* the record sheet's lift */
+  --sheet-shadow: rgba(20, 30, 48, 0.12);
 
-  /* state colours (sit on top of the world palette, carry meaning only) */
-  --link: #2d5da8;
-  --focus: #2d5da8;
-  --pass: #2e7d4f;
-  --warn: #a66a1e;
-  --fail: #a83a32;
-
-  /* pressed paper (selection, hover) */
-  --tint: #e9e5da;
-  --tint-soft: #efede6;
-
-  /* account code chips (stable per account, legend = the account list) */
-  --acct-0: #2d5da8;
-  --acct-1: #7a4fa3;
-  --acct-2: #2e7d4f;
-  --acct-3: #a66a1e;
-  --acct-4: #a83a32;
-  --acct-5: #3d7f8f;
+  /* list-row rhythm; compact density tightens it (data-density on <html>) */
+  --row-pad-y: 0.5rem;
 }
 
-[data-theme="dark"] {
-  --paper: #10161e;
-  --paper-drift-1: rgba(122, 168, 230, 0.05);
-  --paper-drift-2: rgba(210, 92, 79, 0.04);
-  --sheet: #17202c;
-  --sheet-shadow: rgba(0, 0, 0, 0.42);
-  --ink: #e4e8ef;
-  --ink-2: #a9b4c4;
-  --ink-3: #7d8ca1;
-  --invoked-ink: #10161e;
-
-  --rule: #232e3d;
-  --rule-blue: #243347;
-  --rule-strong: #334054;
-
-  --accent: #d25c4f;
-  --accent-soft: rgba(210, 92, 79, 0.14);
-
-  --link: #8ab0e0;
-  --focus: #8ab0e0;
-  --pass: #58a97e;
-  --warn: #d9a03c;
-  --fail: #d25c4f;
-
-  --tint: #1d2735;
-  --tint-soft: #182130;
-
-  --acct-0: #8ab0e0;
-  --acct-1: #b79ad8;
-  --acct-2: #58a97e;
-  --acct-3: #d9a03c;
-  --acct-4: #d25c4f;
-  --acct-5: #6fb0c0;
+[data-density="compact"] {
+  --row-pad-y: 0.25rem;
 }
 
-/* ---------- tailwind theme mapping ---------- */
+/* dark color-schemes need a heavier shadow to lift the sheet */
+[data-theme="talaria-dark"],
+[data-theme="dark"],
+[data-theme="black"],
+[data-theme="business"],
+[data-theme="coffee"],
+[data-theme="dim"],
+[data-theme="forest"],
+[data-theme="halloween"],
+[data-theme="luxury"],
+[data-theme="night"],
+[data-theme="sunset"],
+[data-theme="synthwave"],
+[data-theme="abyss"],
+[data-theme="aqua"],
+[data-theme="dracula"] {
+  --sheet-shadow: rgba(0, 0, 0, 0.45);
+}
+
+/* ---------- tailwind theme mapping (fonts only; color is daisyUI's job) ---------- */
 
 @theme inline {
-  --color-paper: var(--paper);
-  --color-sheet: var(--sheet);
-  --color-ink: var(--ink);
-  --color-ink-2: var(--ink-2);
-  --color-ink-3: var(--ink-3);
-  --color-rule: var(--rule);
-  --color-rule-blue: var(--rule-blue);
-  --color-accent: var(--accent);
-  --color-accent-soft: var(--accent-soft);
-  --color-link: var(--link);
-  --color-tint: var(--tint);
-  --color-tint-soft: var(--tint-soft);
-  --color-invoked: var(--invoked-ink);
   --font-sans: "Archivo Variable", "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-reading: "Golos Text Variable", "Golos Text", var(--font-sans);
 }
@@ -122,8 +164,8 @@ html {
 body {
   height: 100%;
   margin: 0;
-  background-color: var(--paper);
-  color: var(--ink);
+  background-color: var(--color-base-200);
+  color: var(--color-base-content);
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.45;
@@ -139,8 +181,8 @@ body {
   isolation: isolate;
 }
 
-/* The quiet drift: paper is never flat white (raise from the plate-section
- * challenger) — two large, faint tints breathe into opposite corners. */
+/* The quiet drift: the app ground is never flat — two large, faint tints
+ * breathe into opposite corners, colored by the active theme. */
 #app::before {
   content: "";
   position: fixed;
@@ -155,24 +197,24 @@ body {
 /* ---------- browser surfaces (themed, not defaulted) ---------- */
 
 ::selection {
-  background: var(--accent-soft);
-  color: var(--ink);
+  background: color-mix(in oklab, var(--color-accent) 24%, transparent);
+  color: var(--color-base-content);
 }
 
 input,
 textarea {
-  caret-color: var(--accent);
+  caret-color: var(--color-primary);
 }
 
 :focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
   border-radius: 2px;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--rule-strong) transparent;
+  scrollbar-color: color-mix(in oklab, var(--color-base-content) 28%, transparent) transparent;
 }
 
 /* the search input's native cancel duplicates our own clear button */
@@ -187,7 +229,7 @@ input[type="search"]::-webkit-search-cancel-button {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: var(--rule-strong);
+  background: color-mix(in oklab, var(--color-base-content) 28%, transparent);
   border-radius: 5px;
   border: 2px solid transparent;
   background-clip: padding-box;
@@ -238,7 +280,7 @@ input[type="search"]::-webkit-search-cancel-button {
 }
 
 .skeleton {
-  background: var(--tint);
+  background: var(--color-base-300);
   border-radius: 3px;
   animation: skeleton-pulse 1.4s ease-in-out infinite;
 }
@@ -286,7 +328,7 @@ input[type="search"]::-webkit-search-cancel-button {
 /* ---------- the record sheet (reader) ---------- */
 
 .record-sheet {
-  background: var(--sheet);
+  background: var(--color-base-100);
   box-shadow:
     0 1px 2px var(--sheet-shadow),
     0 10px 28px var(--sheet-shadow);
@@ -298,7 +340,7 @@ input[type="search"]::-webkit-search-cancel-button {
   font-family: var(--font-reading);
   font-size: 15.5px;
   line-height: 1.65;
-  color: var(--ink);
+  color: var(--color-base-content);
   max-width: 68ch;
 }
 
@@ -339,7 +381,7 @@ input[type="search"]::-webkit-search-cancel-button {
 }
 
 .register-prose a {
-  color: var(--link);
+  color: var(--color-primary);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
@@ -368,14 +410,14 @@ input[type="search"]::-webkit-search-cancel-button {
 }
 
 .register-prose li::marker {
-  color: var(--ink-3);
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
 }
 
 .register-prose blockquote {
   margin: 0 0 1em;
   padding: 0.1em 0 0.1em 1em;
-  border-left: 1px solid var(--rule-strong);
-  color: var(--ink-2);
+  border-left: 1px solid var(--color-base-300);
+  color: color-mix(in oklab, var(--color-base-content) 72%, transparent);
 }
 
 .register-prose blockquote p {
@@ -385,15 +427,15 @@ input[type="search"]::-webkit-search-cancel-button {
 .register-prose code {
   font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   font-size: 0.875em;
-  background: var(--tint-soft);
-  border: 1px solid var(--rule);
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
   border-radius: 3px;
   padding: 0.08em 0.35em;
 }
 
 .register-prose pre {
-  background: var(--tint-soft);
-  border: 1px solid var(--rule);
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
   border-radius: 4px;
   padding: 0.9em 1em;
   overflow-x: auto;
@@ -416,26 +458,26 @@ input[type="search"]::-webkit-search-cancel-button {
 
 .register-prose th,
 .register-prose td {
-  border: 1px solid var(--rule);
+  border: 1px solid var(--color-base-300);
   padding: 0.35em 0.7em;
   text-align: left;
 }
 
 .register-prose th {
-  background: var(--tint-soft);
+  background: var(--color-base-200);
   font-weight: 600;
 }
 
 .register-prose hr {
   border: none;
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--color-base-300);
   margin: 1.6em 0;
 }
 
 .register-prose img {
   max-width: 100%;
   height: auto;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--color-base-300);
   border-radius: 3px;
 }
 
@@ -449,7 +491,7 @@ input[type="search"]::-webkit-search-cancel-button {
   font-family: var(--font-reading);
   font-size: 14px;
   line-height: 1.6;
-  color: var(--ink);
+  color: var(--color-base-content);
   max-width: 68ch;
 }
 
@@ -462,7 +504,7 @@ input[type="search"]::-webkit-search-cancel-button {
 }
 
 .thread-prose a {
-  color: var(--link);
+  color: var(--color-primary);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
@@ -475,8 +517,8 @@ input[type="search"]::-webkit-search-cancel-button {
 }
 
 .thread-prose pre {
-  background: var(--tint-soft);
-  border: 1px solid var(--rule);
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
   border-radius: 4px;
   padding: 0.7em 0.9em;
   overflow-x: auto;
@@ -487,15 +529,15 @@ input[type="search"]::-webkit-search-cancel-button {
 .thread-prose blockquote {
   margin: 0 0 0.6em;
   padding: 0.1em 0 0.1em 1em;
-  border-left: 1px solid var(--rule-strong);
-  color: var(--ink-2);
+  border-left: 1px solid var(--color-base-300);
+  color: color-mix(in oklab, var(--color-base-content) 72%, transparent);
 }
 
 /* agate: the small tabular line under list rows / headers */
 .agate {
   font-size: 11.5px;
   line-height: 1.4;
-  color: var(--ink-3);
+  color: color-mix(in oklab, var(--color-base-content) 66%, transparent);
   font-variant-numeric: tabular-nums;
 }
 
@@ -507,12 +549,13 @@ input[type="search"]::-webkit-search-cancel-button {
   flex: none;
 }
 
-/* unread dot — red, and always paired with heavier ink (never color alone) */
+/* unread mark — the bright brand accent, always paired with heavier ink
+ * (never color alone) */
 .unread-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--color-accent);
   flex: none;
 }
 
@@ -521,5 +564,223 @@ input[type="search"]::-webkit-search-cancel-button {
   display: block;
   height: 2px;
   width: 100%;
-  background: var(--accent);
+  background: var(--color-accent);
+}
+
+/* register-page row rhythm (density switch tightens via --row-pad-y) */
+.register-row {
+  padding-block: var(--row-pad-y);
+}
+
+[data-density="compact"] .row-preview {
+  display: none;
+}
+
+/* W1 organize (Round 3): quick-action overlay on register rows — pinned
+ * to the right edge, floats over the date slot, never shifts the grid
+ * (the virtualizer's measurements stay valid). */
+.row-actions {
+  /* one soft ground so the buttons read over any row ink */
+  filter: drop-shadow(0 1px 4px color-mix(in oklab, var(--color-base-300) 90%, transparent));
+}
+
+/* marginalia: the write-action confirmation slips (toasts) */
+@keyframes marginalia-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.marginalia {
+  animation: marginalia-rise 180ms ease-out;
+}
+
+/* the theme picker's swatch strip (nested data-theme scopes daisyUI vars) */
+.theme-swatch {
+  display: flex;
+  width: 1.75rem;
+  height: 1rem;
+  flex: none;
+  overflow: hidden;
+  border-radius: 3px;
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 20%, transparent);
+}
+
+.theme-swatch > span {
+  display: block;
+  height: 100%;
+}
+
+/* ---------- Stage 2: print view ---------- */
+
+/* Print = the record sheet only: headers, sanitized body, attachments —
+ * none of the register chrome. Triggered by the sheet's Print button
+ * (window.print()); the sheet itself needs no extra DOM class, isolation
+ * is structural. */
+@media print {
+  @page {
+    margin: 16mm 14mm;
+  }
+
+  /* chrome away: masthead, rail, register list, phone nav, toasts, overlays */
+  header,
+  aside,
+  section[aria-label="Message list"],
+  nav,
+  .toast,
+  .dropdown-content,
+  [role="dialog"] {
+    display: none !important;
+  }
+
+  /* the sheet becomes the page: every other pane of the shell goes away */
+  .app-shell > *:not(section[aria-label="Message reader"]) {
+    display: none !important;
+  }
+
+  section[aria-label="Message reader"] {
+    display: block !important;
+    min-height: 0;
+    max-height: none;
+    overflow: visible !important;
+    border: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  /* actionless paper: toggles, pickers, buttons, skeletons out */
+  .record-sheet {
+    box-shadow: none;
+    border-radius: 0;
+    background: #fff;
+    color: #111;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .record-sheet button,
+  .record-sheet details {
+    display: none !important;
+  }
+
+  .register-prose {
+    max-width: none;
+    font-size: 11.5pt;
+    line-height: 1.5;
+    color: #111;
+  }
+
+  .register-prose a {
+    color: #111;
+  }
+
+  .register-prose blockquote {
+    background: #f4f4f4;
+    border-color: #ccc;
+    color: #333;
+  }
+
+  .record-sheet img {
+    max-width: 100%;
+  }
+
+  .agate,
+  .record-sheet time {
+    color: #444;
+  }
+
+  /* keep the unread marks, seals and chips from printing as vivid color */
+  .unread-dot,
+  .status {
+    filter: grayscale(1);
+  }
+}
+
+/* ---------- Stage 3 (W2 drafts): the composer ---------- */
+
+/* recipient chips: quiet ink, one rule line, no chrome — the meta grid of
+ * the record sheet, made editable */
+.recipient-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  max-width: 100%;
+  padding: 0.125rem 0.375rem 0.125rem 0.625rem;
+  border: 1px solid var(--color-base-300);
+  border-radius: 999px;
+  background: var(--color-base-200);
+  font-size: 12px;
+  line-height: 1.35;
+  flex: none;
+}
+
+/* the Tiptap surface: same reading metrics as the record sheet's prose,
+ * with an editor's affordances (caret, placeholder, quote rail) */
+.compose-editor {
+  min-height: 100%;
+}
+
+.compose-editor .tiptap {
+  outline: none;
+  min-height: 180px;
+  max-width: 72ch;
+  padding-block: 0.9rem 2rem;
+  font-family: var(--font-reading);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--color-base-content);
+}
+
+.compose-editor .tiptap p {
+  margin: 0 0 0.7em;
+}
+
+.compose-editor .tiptap p:last-child {
+  margin-bottom: 0;
+}
+
+.compose-editor .tiptap ul,
+.compose-editor .tiptap ol {
+  margin: 0 0 0.7em;
+  padding-left: 1.4em;
+}
+
+.compose-editor .tiptap li {
+  margin: 0.15em 0;
+}
+
+.compose-editor .tiptap li::marker {
+  color: color-mix(in oklab, var(--color-base-content) 55%, transparent);
+}
+
+.compose-editor .tiptap blockquote {
+  margin: 0 0 0.7em;
+  padding: 0.1em 0 0.1em 1em;
+  border-left: 1px solid var(--color-base-300);
+  color: color-mix(in oklab, var(--color-base-content) 72%, transparent);
+}
+
+.compose-editor .tiptap a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* the Tiptap placeholder (Placeholder extension marks the empty first node) */
+.compose-editor .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+}
+
+/* the reply/forward reference copy under the editor */
+.compose-original {
+  max-width: none;
 }

@@ -71,6 +71,10 @@ function renderBody(detail: MessageDetail): string {
   let raw: string;
   if (detail.bodyFormat === "markdown") {
     raw = marked.parse(detail.body, { async: false, gfm: true, breaks: true }) as string;
+  } else if (detail.bodyFormat === "html") {
+    // Thread transcripts never carry remote images (batch reads ask for
+    // markdown) — but stay defensive: sanitize directly, images stripped.
+    raw = detail.body;
   } else {
     raw = `<p>${escapeHtml(detail.body).replaceAll("\n", "<br />")}</p>`;
   }
@@ -92,13 +96,13 @@ function listStamp(iso: string): string {
 </script>
 
 <template>
-  <section v-if="mail.threadSummaries.length > 1 || mail.threadError" class="mt-6 border-t border-rule pt-3" aria-label="Conversation">
+  <section v-if="mail.threadSummaries.length > 1 || mail.threadError" class="mt-6 border-t border-base-300 pt-3" aria-label="Conversation">
     <div class="flex items-baseline gap-2">
-      <h3 class="text-[12px] font-semibold text-ink">
+      <h3 class="text-[12px] font-semibold">
         Thread · {{ mail.threadSummaries.length }} messages
       </h3>
       <button
-        class="ml-auto rounded-[3px] px-1.5 py-0.5 text-[11.5px] text-ink-2 hover:bg-tint-soft hover:text-ink"
+        class="btn btn-ghost btn-xs ml-auto"
         :aria-expanded="allOpen"
         @click="expandAll"
       >
@@ -108,7 +112,7 @@ function listStamp(iso: string): string {
 
     <p v-if="mail.threadError" class="agate mt-2">
       {{ mail.threadError }}
-      <button class="underline hover:text-ink" @click="retryThread">Try again</button>
+      <button class="underline hover:text-base-content" @click="retryThread">Try again</button>
     </p>
 
     <!-- loading skeleton -->
@@ -121,30 +125,30 @@ function listStamp(iso: string): string {
       <li
         v-for="entry in mail.thread"
         :key="entry.summary.id"
-        class="rounded-[4px]"
-        :class="entry.isCurrent ? 'border border-rule-blue bg-tint-soft' : 'border border-transparent'"
+        class="rounded-field"
+        :class="entry.isCurrent ? 'border border-primary/40 bg-base-200' : 'border border-transparent'"
       >
         <!-- entry line -->
         <button
-          class="flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-left"
-          :class="entry.isCurrent ? '' : 'hover:bg-tint-soft'"
+          class="flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left"
+          :class="entry.isCurrent ? '' : 'hover:bg-base-300/50'"
           :aria-expanded="isOpen(entry.summary.id)"
           @click="entry.isCurrent ? undefined : toggle(entry.summary.id)"
         >
           <span
-            class="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-tint text-[9px] font-bold text-ink-2"
+            class="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-base-300 text-[9px] font-bold text-base-content/70"
             aria-hidden="true"
           >
             {{ initials(parseAddress(entry.summary.author).name) }}
           </span>
-          <span class="min-w-0 flex-1 line-clamp-1 text-[12.5px]" :class="entry.isCurrent ? 'font-semibold text-ink' : 'text-ink-2'">
+          <span class="min-w-0 flex-1 line-clamp-1 text-[12.5px]" :class="entry.isCurrent ? 'font-semibold' : 'text-base-content/70'">
             {{ parseAddress(entry.summary.author).name }}
-            <span v-if="!entry.isCurrent && entry.summary.subject !== mail.selectedDetail?.subject" class="text-ink-3">
+            <span v-if="!entry.isCurrent && entry.summary.subject !== mail.selectedDetail?.subject" class="text-base-content/55">
               — {{ entry.summary.subject }}
             </span>
           </span>
           <span v-if="entry.detail && entry.detail.attachments.length > 0" class="flex flex-none items-center gap-1">
-            <IconGlyph name="paperclip" :size="11" class="text-ink-3" />
+            <IconGlyph name="paperclip" :size="11" class="text-base-content/55" />
             <span class="agate">{{ entry.detail.attachments.length }}</span>
           </span>
           <span v-if="!entry.summary.read" class="unread-dot flex-none" aria-label="unread" />
@@ -153,9 +157,9 @@ function listStamp(iso: string): string {
             v-if="!entry.isCurrent"
             :name="isOpen(entry.summary.id) ? 'chevron-down' : 'chevron-right'"
             :size="12"
-            class="flex-none text-ink-3"
+            class="flex-none text-base-content/55"
           />
-          <span v-if="entry.isCurrent" class="agate flex-none !text-ink-3">this record</span>
+          <span v-if="entry.isCurrent" class="agate flex-none text-primary">this record</span>
         </button>
 
         <!-- expanded body -->

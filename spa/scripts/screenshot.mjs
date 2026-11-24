@@ -10,7 +10,7 @@
  * Env:
  *   SHOTS_BASE_URL  default http://localhost:5173 (vite dev, mock backend)
  *   SHOTS_OUT_MAIN  default ../../docs/screenshots  (the deliverable pair)
- *   SHOTS_OUT_REVIEW default ../../docs/screenshots/review  (review extras)
+ *   SHOTS_OUT_REVIEW default ../../../../.impeccable/review  (review extras)
  */
 
 import { mkdirSync, readdirSync } from "node:fs";
@@ -21,7 +21,7 @@ import { chromium } from "playwright-core";
 const here = dirname(fileURLToPath(import.meta.url));
 const base = process.env.SHOTS_BASE_URL ?? "http://localhost:5173";
 const outMain = resolve(here, process.env.SHOTS_OUT_MAIN ?? "../../docs/screenshots");
-const outReview = resolve(here, process.env.SHOTS_OUT_REVIEW ?? "../../docs/screenshots/review");
+const outReview = resolve(here, process.env.SHOTS_OUT_REVIEW ?? "../../../../.impeccable/review");
 
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;

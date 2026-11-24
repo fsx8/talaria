@@ -1,7 +1,7 @@
 {
   "name": "tbweb",
   "version": "0.1.0",
-  "description": "Talaria sidecar: reverse-proxies the commonpost JSON-RPC addon API, serves the SPA, streams SSE live events, sends web push.",
+  "description": "Unofficial Thunderbird web client, Phase 1 sidecar: reverse-proxies the commonpost JSON-RPC addon API, hosts the SPA (Phase 2), serves SSE live events (polling MVP).",
   "type": "module",
   "main": "src/index.js",
   "private": true,

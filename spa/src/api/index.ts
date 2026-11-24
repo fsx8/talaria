@@ -12,6 +12,17 @@ import { createMockBackend } from "./mock-backend";
 import { createRealBackend } from "./real-backend";
 
 export type { MailBackend } from "./backend-interface";
+export type {
+  MessageRef,
+  MessagePatch,
+  UpdateResult,
+  CreateFolderResult,
+  BodyChunk,
+  ComposeTarget,
+  DraftFields,
+  DraftResult,
+  Recipient,
+} from "./backend-interface";
 export { BackendError, ACCOUNT_PALETTE_SIZE } from "./real-backend";
 export type * from "./types";
 

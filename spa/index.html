@@ -6,25 +6,41 @@
     <title>Talaria — mail register</title>
     <meta
       name="description"
-      content="Talaria: a read-only register view of your Thunderbird mail. Triage from desk or phone."
+      content="Talaria: a register view of your Thunderbird mail — read, search and organize from desk or phone."
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f3f2ee" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#10161e" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f6fa" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#101825" />
     <script>
-      // Resolve theme before first paint to avoid a flash of the wrong register.
+      // Resolve the theme before first paint (anti-FOUC). Reads the settings
+      // store's key directly; "system" (or nothing) resolves through the OS
+      // preference onto the Talaria identity. The settings store applies the
+      // same logic once mounted — this script only covers the pre-paint gap.
+      // Legacy fallback: the Round-1 key held "light"|"dark"|"system".
       (function () {
+        var theme = null;
         try {
-          var pref = localStorage.getItem("talaria.theme") || "system";
-          var dark =
-            pref === "dark" ||
-            (pref === "system" &&
-              window.matchMedia("(prefers-color-scheme: dark)").matches);
-          document.documentElement.dataset.theme = dark ? "dark" : "light";
+          var raw = localStorage.getItem("talaria.settings");
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed.themeId === "string" && parsed.themeId !== "system") {
+              theme = parsed.themeId;
+            }
+          } else {
+            var legacy = localStorage.getItem("talaria.theme");
+            if (legacy === "light") theme = "talaria-light";
+            else if (legacy === "dark") theme = "talaria-dark";
+          }
         } catch (e) {
-          document.documentElement.dataset.theme = "light";
+          /* fall through to the OS preference */
         }
+        if (!theme) {
+          theme = window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "talaria-dark"
+            : "talaria-light";
+        }
+        document.documentElement.dataset.theme = theme;
       })();
     </script>
   </head>

@@ -4,20 +4,29 @@
 
 import { defineStore } from "pinia";
 import { BackendError, getBackend } from "../api";
-import type { BodyChunk } from "../api/backend-interface";
-import type { MailEvent, MessageDetail, MessageSummary } from "../api/types";
+import type { BodyChunk, MessageRef } from "../api/backend-interface";
+import type { BootstrapData, Folder, MailEvent, MessageDetail, MessageSummary, SearchResult } from "../api/types";
 import { useAccountsStore } from "./accounts";
+import { scheduleBootSnapshotPersist } from "./boot";
+import { useSettingsStore } from "./settings";
+import { useToastStore } from "./toast";
 
 /**
  * The register page (message list) and the record sheet (reader).
  * Pagination = offset + hasMore from the sidecar; the detail cache is a
  * small LRU so flipping prev/next stays instant. Phase 4 adds the
  * conversation (thread) panel, cache-derived attachment hints, and
- * `bodyOffset`-paged body continuation.
+ * `bodyOffset`-paged body continuation. Round 3 (W1 organize) adds the
+ * reversible write tier: read/unread, flag, move to folder, create folder
+ * — all optimistic with rollback, all confirmed via marginalia toasts.
  */
 
 const PAGE_SIZE = 50;
 const DETAIL_CACHE_MAX = 24;
+/** Mark a record as read this long after opening it (settings-gated). */
+const MARK_READ_DELAY_MS = 900;
+/** How long a moved row stays locally suppressed (IMAP echoes can linger). */
+const MOVE_ECHO_MS = 20_000;
 
 export const useMailStore = defineStore("mail", {
   state: () => ({
@@ -63,6 +72,24 @@ export const useMailStore = defineStore("mail", {
     refreshSeq: 0,
 
     refreshTimer: null as ReturnType<typeof setTimeout> | null,
+
+    /* ---- W1 organize (Round 3) ---- */
+    /** Batch-selection mode: the register shows checkboxes, the head a bar. */
+    selectMode: false,
+    checkedIds: [] as string[],
+    /** Any write round-trip in flight (drives button spinners, re-entry guards). */
+    writeBusy: false,
+    /** The open-then-mark-read timer for the current selection. */
+    markReadTimer: null as ReturnType<typeof setTimeout> | null,
+    /** Rows moved out of a folder, suppressed until an IMAP echo settles:
+     *  id → { until, to } — the row stays hidden while the register still
+     *  shows it under its OLD folder. */
+    pendingMoves: new Map<string, { until: number; to: string }>(),
+
+    /* ---- Stage 2 ---- */
+    /** Remote-image consent: message ids the user explicitly allowed this
+     *  session (never persisted — consent is per message, per session). */
+    remoteImagesAllowed: new Set<string>(),
   }),
 
   getters: {
@@ -106,16 +133,79 @@ export const useMailStore = defineStore("mail", {
     derivedAttachments(state) {
       return (id: string): boolean | undefined => state.attachmentsKnown.get(id);
     },
+    /** The backend carries a write tier (real sidecar post-W1, mock demo). */
+    canOrganize(): boolean {
+      return getBackend().updateMessages !== undefined;
+    },
+    /** The combined switch: affordances show only when both gates are open. */
+    actionsVisible(): boolean {
+      return useSettingsStore().showActions && this.canOrganize;
+    },
+    /** The open record sits in a Drafts folder (the composer owns those). */
+    selectedIsDraft(): boolean {
+      const summary = this.selectedSummary;
+      if (!summary) return false;
+      return useAccountsStore().folderByPath(summary.folderPath)?.kind === "drafts";
+    },
+    checkedCount(state): number {
+      return state.checkedIds.length;
+    },
+    /** The checked rows that are actually on the loaded pages. */
+    checkedItems(state): MessageRef[] {
+      const refs: MessageRef[] = [];
+      for (const row of state.messages) {
+        if (state.checkedIds.includes(row.id)) refs.push({ id: row.id, folderPath: row.folderPath });
+      }
+      return refs;
+    },
+    /**
+     * The scope a TYPED query is implicitly filed under (Stage 2 search
+     * scoping): All mail → null (the server skips Trash/Junk), Current
+     * account → the account's root URI, Current folder → the rail's scope.
+     * Untyped browsing keeps the rail's explicit scope untouched.
+     */
+    typedScopeFolder(state): string | null {
+      const accounts = useAccountsStore();
+      const settings = useSettingsStore();
+      if (!state.searchText) return accounts.scopeFolder;
+      switch (settings.searchScope) {
+        case "account": {
+          const root = accounts.accountRootPath(accounts.selectedAccountId);
+          return root ?? null;
+        }
+        case "folder":
+          return accounts.scopeFolder;
+        default:
+          return null;
+      }
+    },
+    /** Human label of the effective typed scope — the chip next to results. */
+    typedScopeLabel(state): string | null {
+      const accounts = useAccountsStore();
+      const settings = useSettingsStore();
+      if (!state.searchText) return null;
+      const scope = this.typedScopeFolder;
+      if (!scope) return "All mail";
+      for (const account of accounts.accounts) {
+        const folders = accounts.foldersByAccount[account.id] ?? [];
+        const root = accounts.accountRootPath(account.id);
+        if (root && scope === root) return settings.accountLabel(account);
+        const hit = folders.find((f) => f.path === scope);
+        if (hit) return hit.name;
+      }
+      return "Folder";
+    },
   },
 
   actions: {
     buildArgs(extra: { maxResults?: number; offset?: number }) {
-      const accounts = useAccountsStore();
       return {
         text: this.searchText,
         unreadOnly: this.unreadOnly || undefined,
         flaggedOnly: this.flaggedOnly || undefined,
-        scopeFolder: accounts.scopeFolder,
+        // Typed queries carry the implicit Search-scope setting; untyped
+        // browsing keeps the rail's explicit folder scope.
+        scopeFolder: this.typedScopeFolder,
         ...extra,
       };
     },
@@ -132,13 +222,14 @@ export const useMailStore = defineStore("mail", {
         // A newer query superseded this one (search typing, SSE refresh) —
         // drop the stale page instead of clobbering the newer result.
         if (seq !== this.refreshSeq) return;
-        this.messages = result.messages;
+        this.messages = this.filterHiddenAccounts(this.filterMoveEchoes(result.messages));
         this.totalMatches = result.totalMatches;
         this.hasMore = result.hasMore;
         // Keep the selection when the message survives the refresh; else drop it.
         if (this.selectedId && !result.messages.some((m) => m.id === this.selectedId)) {
           this.clearSelection();
         }
+        scheduleBootSnapshotPersist(); // keep the repeat-visit snapshot fresh
       } catch (cause) {
         if (seq !== this.refreshSeq) return;
         this.listError =
@@ -161,7 +252,7 @@ export const useMailStore = defineStore("mail", {
         );
         if (seq !== this.refreshSeq) return; // superseded mid-flight
         const seen = new Set(this.messages.map((m) => m.id));
-        const fresh = result.messages.filter((m) => !seen.has(m.id));
+        const fresh = this.filterHiddenAccounts(this.filterMoveEchoes(result.messages)).filter((m) => !seen.has(m.id));
         this.messages.push(...fresh);
         this.totalMatches = result.totalMatches;
         this.hasMore = result.hasMore;
@@ -196,9 +287,19 @@ export const useMailStore = defineStore("mail", {
       this.refreshTimer = setTimeout(() => void this.refresh(), delay);
     },
 
+    /** One-shot extra refresh that does NOT clear the debounce timer (used
+     *  after moves, so a settle pass can't be swallowed by scheduleRefresh). */
+    scheduleSettleRefresh(delay: number) {
+      setTimeout(() => {
+        if (this.listLoading || this.listAppending) return;
+        void this.refresh();
+      }, delay);
+    },
+
     async select(id: string) {
       if (this.selectedId === id) return;
       const previous = this.selectedId;
+      this.cancelMarkRead(); // a new selection abandons the previous open's timer
       this.selectedId = id;
       this.detailError = null;
       this.bodyError = null;
@@ -226,7 +327,40 @@ export const useMailStore = defineStore("mail", {
       } else {
         void this.preloadNeighbours(id);
       }
+      // Drafts are the composer's material, not reading material: no
+      // mark-as-read on open, no conversation panel.
+      if (this.selectedIsDraft) {
+        this.cancelMarkRead();
+        return;
+      }
+      this.scheduleMarkRead(id);
       void this.loadThread();
+    },
+
+    /* ---- W1 organize (Round 3): mark-as-read on open ---- */
+
+    /** Arm the delayed mark-as-read for a freshly opened record. Failures
+     *  degrade silently (the entry just stays unread). */
+    scheduleMarkRead(id: string) {
+      const settings = useSettingsStore();
+      if (!settings.markReadOnOpen || !this.actionsVisible) return;
+      const summary = this.messages.find((m) => m.id === id);
+      if (!summary || summary.read) return;
+      this.markReadTimer = setTimeout(() => {
+        this.markReadTimer = null;
+        // Still on the same record, and still unread?
+        if (this.selectedId !== id) return;
+        const current = this.messages.find((m) => m.id === id) ?? this.selectedSummary;
+        if (!current || current.read) return;
+        void this.setRead([{ id: current.id, folderPath: current.folderPath }], true, { silent: true });
+      }, MARK_READ_DELAY_MS);
+    },
+
+    cancelMarkRead() {
+      if (this.markReadTimer) {
+        clearTimeout(this.markReadTimer);
+        this.markReadTimer = null;
+      }
     },
 
     resetThread() {
@@ -350,12 +484,269 @@ export const useMailStore = defineStore("mail", {
       if (next) void this.select(next);
     },
     clearSelection() {
+      this.cancelMarkRead();
       this.selectedId = null;
+    },
+
+    /* ---- W1 organize (Round 3): the reversible write tier ---- */
+
+    /**
+     * Drop rows the server still echoes under their OLD folder shortly
+     * after a move (IMAP copies settle asynchronously). A row that already
+     * shows up under its new home is kept.
+     */
+    filterMoveEchoes(rows: MessageSummary[]): MessageSummary[] {
+      if (this.pendingMoves.size === 0) return rows;
+      const now = Date.now();
+      for (const [id, entry] of this.pendingMoves) {
+        if (entry.until < now) this.pendingMoves.delete(id);
+      }
+      if (this.pendingMoves.size === 0) return rows;
+      return rows.filter((m) => {
+        const pending = this.pendingMoves.get(m.id);
+        return !pending || m.folderPath === pending.to;
+      });
+    },
+
+    /** Optimistic read/unread change with rollback; confirms via toast
+     *  unless silent (mark-as-read-on-open degrades quietly). */
+    async setRead(items: MessageRef[], read: boolean, opts: { silent?: boolean } = {}) {
+      await this.applyPatch(items, { read }, opts, read ? "Marked read" : "Marked unread");
+    },
+
+    /** Optimistic flag change with rollback (confirmation-free: reversible). */
+    async setFlagged(items: MessageRef[], flagged: boolean) {
+      await this.applyPatch(items, { flagged }, {}, flagged ? "Flagged" : "Flag cleared");
+    },
+
+    /** Shared optimistic patch: flip rows (and the open record's summaries)
+     *  immediately, then settle with the backend; any failure restores the
+     *  previous values and reports via toast. */
+    async applyPatch(
+      items: MessageRef[],
+      patch: { read?: boolean; flagged?: boolean },
+      opts: { silent?: boolean },
+      okLabel: string,
+    ) {
+      const backend = getBackend();
+      if (!backend.updateMessages || items.length === 0 || this.writeBusy) return;
+      const toast = useToastStore();
+      // Capture + optimistic flip on every visible copy of each row.
+      const before: Array<{ row: MessageSummary; read: boolean; flagged: boolean }> = [];
+      for (const item of items) {
+        for (const row of this.rowsById(item.id)) {
+          before.push({ row, read: row.read, flagged: row.flagged });
+          if (patch.read !== undefined) row.read = patch.read;
+          if (patch.flagged !== undefined) row.flagged = patch.flagged;
+        }
+      }
+      this.writeBusy = true;
+      try {
+        const result = await backend.updateMessages(items, patch);
+        if (result.notFound.length > 0 && !opts.silent) {
+          toast.ok(`${okLabel} · ${result.notFound.length} of ${items.length} not found (already moved?)`);
+        } else if (!opts.silent) {
+          toast.ok(items.length > 1 ? `${okLabel} · ${result.updated}` : okLabel);
+        }
+        if (result.warning) toast.err(`Note: ${result.warning}`);
+        void useAccountsStore().refreshUnread();
+      } catch (cause) {
+        for (const entry of before) {
+          entry.row.read = entry.read;
+          entry.row.flagged = entry.flagged;
+        }
+        if (!opts.silent) {
+          toast.err(cause instanceof Error ? cause.message : "The change was rolled back.");
+        }
+      } finally {
+        this.writeBusy = false;
+      }
+    },
+
+    /**
+     * Drop rows filed under a hidden account (Stage 2 per-account
+     * visibility — client-side filtering; the backend keeps indexing the
+     * account, so a folder-scoped refresh is still authoritative).
+     */
+    filterHiddenAccounts(rows: MessageSummary[]): MessageSummary[] {
+      const accounts = useAccountsStore();
+      if (!accounts.hasHiddenAccounts) return rows;
+      return rows.filter((m) => accounts.accountOfFolder(m.folderPath) !== null);
+    },
+
+    /** Select the first unread row (keyboard j/k with no selection, phone). */
+    selectFirstUnread(): boolean {
+      const target = this.messages.find((m) => !m.read) ?? this.messages[0];
+      if (!target) return false;
+      void this.select(target.id);
+      return true;
+    },
+
+    /* ---- Stage 2: remote-image consent ---- */
+
+    /** The open message may render remote images for the rest of the session. */
+    allowRemoteImages(id: string) {
+      this.remoteImagesAllowed.add(id);
+    },
+
+    remoteImagesAllowedFor(id: string | null): boolean {
+      return id !== null && this.remoteImagesAllowed.has(id);
+    },
+
+    /** Every visible copy of a row: the register, the thread panel. */
+    rowsById(id: string): MessageSummary[] {
+      const rows: MessageSummary[] = [];
+      const main = this.messages.find((m) => m.id === id);
+      if (main) rows.push(main);
+      const thread = this.threadSummaries.find((m) => m.id === id);
+      if (thread) rows.push(thread);
+      return rows;
+    },
+
+    /**
+     * Move entries to a folder: optimistic removal from the register (with
+     * a local echo-suppression window), refresh + tally on success,
+     * re-insert + refresh on failure. No confirmation dialog — the picker
+     * click IS the confirmation, and moves are reversible.
+     */
+    async moveTo(items: MessageRef[], target: Folder) {
+      const backend = getBackend();
+      if (!backend.updateMessages || items.length === 0 || this.writeBusy) return;
+      const toast = useToastStore();
+      const moving = new Set(items.map((i) => i.id));
+      if (this.selectedId && moving.has(this.selectedId)) this.clearSelection();
+      if (this.selectMode) this.exitSelectMode();
+
+      // Optimistic removal (descending so the captured indexes stay valid).
+      const originals: Array<{ index: number; row: MessageSummary }> = [];
+      for (let i = this.messages.length - 1; i >= 0; i--) {
+        const row = this.messages[i]!;
+        if (moving.has(row.id) && row.folderPath !== target.path) {
+          originals.push({ index: i, row });
+          this.messages.splice(i, 1);
+        }
+      }
+      for (const item of items) {
+        if (!originals.some((o) => o.row.id === item.id)) continue;
+        this.pendingMoves.set(item.id, { until: Date.now() + MOVE_ECHO_MS, to: target.path });
+      }
+      this.totalMatches = Math.max(0, this.totalMatches - originals.length);
+
+      this.writeBusy = true;
+      try {
+        const result = await backend.updateMessages(items, { moveTo: target.path });
+        const moved = result.updated - result.notFound.length;
+        if (moved > 0) {
+          toast.ok(`Filed ${moved > 1 ? `${moved} entries` : "entry"} under ${target.name}`);
+        }
+        if (result.notFound.length > 0) {
+          toast.err(`${result.notFound.length} not found — already moved?`);
+        }
+        if (result.warning) toast.err(`Note: ${result.warning}`);
+      } catch (cause) {
+        // Roll back: re-insert at the captured positions (ascending).
+        for (const { index, row } of originals.reverse()) {
+          this.messages.splice(index, 0, row);
+        }
+        this.totalMatches += originals.length;
+        for (const item of items) this.pendingMoves.delete(item.id);
+        toast.err(cause instanceof Error ? cause.message : "The move was rolled back.");
+      } finally {
+        this.writeBusy = false;
+      }
+      // Resync with the server's view (IMAP moves settle asynchronously) and
+      // refresh the tallies — both flow through refreshSeq, so a pending
+      // user query still wins. IMAP copies can take tens of seconds to land
+      // (and arrive under a NEW message id), so two settle passes catch the
+      // server's view without the user doing anything.
+      void this.refresh();
+      this.scheduleRefresh(5_000);
+      this.scheduleSettleRefresh(20_000);
+      void useAccountsStore().refreshUnread();
+    },
+
+    /** Create a folder inline from the move picker; the tree refetches and
+     *  the folder appears once the server confirms (null path = pending). */
+    async createFolderUnder(parentPath: string, name: string): Promise<boolean> {
+      const backend = getBackend();
+      if (!backend.createFolder || this.writeBusy) return false;
+      const toast = useToastStore();
+      const trimmed = name.trim();
+      if (!trimmed) return false;
+      this.writeBusy = true;
+      try {
+        const result = await backend.createFolder(parentPath, trimmed);
+        await useAccountsStore().loadFolders();
+        toast.ok(
+          result.path
+            ? `Folder ${trimmed} created`
+            : `Folder ${trimmed} requested — appears when the server confirms`,
+        );
+        return true;
+      } catch (cause) {
+        toast.err(cause instanceof Error ? cause.message : "The folder could not be created.");
+        return false;
+      } finally {
+        this.writeBusy = false;
+      }
+    },
+
+    /* ---- W1 organize: batch selection mode ---- */
+
+    toggleSelectMode() {
+      this.selectMode = !this.selectMode;
+      if (!this.selectMode) this.checkedIds = [];
+    },
+    exitSelectMode() {
+      this.selectMode = false;
+      this.checkedIds = [];
+    },
+    toggleChecked(id: string) {
+      this.checkedIds = this.checkedIds.includes(id)
+        ? this.checkedIds.filter((c) => c !== id)
+        : [...this.checkedIds, id];
+    },
+    checkAllVisible() {
+      this.checkedIds = this.messages.map((m) => m.id);
+    },
+
+    /** Hydrate from a /api/bootstrap answer (Round-2 perf): the recent first
+     *  page + the sidecar's global unread for the folio. */
+    applyBoot(boot: Pick<BootstrapData, "recent" | "unread" | "generatedAt">) {
+      this.applyRecentPage(boot.recent);
+      if (boot.unread !== null) this.seedFolio(boot.unread, boot.generatedAt);
+    },
+
+    /** Render the persisted snapshot instantly (pre-bootstrap paint). */
+    applySnapshot(recent: SearchResult, unread: number | null, generatedAt: string) {
+      this.applyRecentPage(recent);
+      if (unread !== null) this.seedFolio(unread, generatedAt);
+    },
+
+    applyRecentPage(result: SearchResult) {
+      this.messages = this.filterHiddenAccounts(this.filterMoveEchoes(result.messages));
+      this.totalMatches = result.totalMatches;
+      this.hasMore = result.hasMore;
+      this.listError = null;
+      this.listLoading = false;
+      this.listAppending = false;
+    },
+
+    /** Seed the folio from bootstrap/snapshot data (same device as the SSE
+     *  hello: folder tallies alone undercount until the first mail event). */
+    seedFolio(unread: number, ts: string) {
+      const previous = this.lastMailEvent?.unread ?? unread;
+      this.lastMailEvent = { unread, previous, ts };
+      this.lastMailEventAt = Date.now();
     },
 
     onMailEvent(event: MailEvent) {
       this.lastMailEvent = event;
       this.lastMailEventAt = Date.now();
+      // The connect-time hello (and every SSE reconnect) only seeds the
+      // folio — refreshing on it duplicated the boot search and gated
+      // first paint behind a second full scan (Round-2 perf fix).
+      if (event.isHello) return;
       // Re-file the current page promptly; the sidecar's own poll already
       // throttled the change, so this only costs one search call.
       this.scheduleRefresh(1_200);
@@ -369,6 +760,9 @@ export const useMailStore = defineStore("mail", {
       this.selectedId = null;
       this.listError = null;
       this.resetThread();
+      this.cancelMarkRead();
+      this.exitSelectMode();
+      this.pendingMoves.clear();
     },
   },
 });

@@ -60,9 +60,9 @@ const lines = computed<Line[]>(() => {
 </script>
 
 <template>
-  <div class="border-t border-rule px-2 pb-2 pt-2">
+  <div class="border-t border-base-300 px-2 pb-2 pt-2">
     <div class="flex items-baseline gap-2 px-2 pb-1">
-      <h3 class="agate !text-ink-3 flex-none uppercase tracking-[0.04em]">Next 7 days</h3>
+      <h3 class="agate flex-none uppercase tracking-[0.04em]">Next 7 days</h3>
       <span
         v-if="agenda.openTaskCount > 0"
         class="agate ml-auto flex-none tabular"
@@ -93,19 +93,19 @@ const lines = computed<Line[]>(() => {
           aria-hidden="true"
         />
         <span class="agate w-[7.2em] flex-none tabular">
-          {{ line.dayLabel }} <span class="text-ink-3">{{ line.timeLabel }}</span>
+          {{ line.dayLabel }} <span class="text-base-content/55">{{ line.timeLabel }}</span>
         </span>
-        <span class="min-w-0 flex-1 line-clamp-1 text-[12px] leading-[1.4] text-ink-2" :title="line.title">
+        <span class="min-w-0 flex-1 line-clamp-1 text-[12px] leading-[1.4] text-base-content/70" :title="line.title">
           {{ line.title }}
         </span>
       </li>
     </ul>
 
     <button
-      class="mt-1 flex w-full items-center gap-1.5 rounded-[4px] px-2 py-1 text-left text-[12px] text-ink-2 hover:bg-tint-soft hover:text-ink"
+      class="mt-1 flex w-full items-center gap-1.5 rounded-field px-2 py-1 text-left text-[12px] text-base-content/70 hover:bg-base-300/50 hover:text-base-content"
       @click="ui.openView('agenda')"
     >
-      <IconGlyph name="calendar" :size="13" class="text-ink-3" />
+      <IconGlyph name="calendar" :size="13" class="text-base-content/55" />
       Open agenda
     </button>
   </div>

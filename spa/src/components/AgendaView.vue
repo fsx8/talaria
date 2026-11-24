@@ -66,10 +66,10 @@ const rangeLabel = computed(() => {
 </script>
 
 <template>
-  <section class="flex min-h-0 flex-1 flex-col bg-paper" aria-label="Agenda">
+  <section class="flex min-h-0 flex-1 flex-col bg-base-200" aria-label="Agenda">
     <!-- page head -->
-    <div class="flex h-10 flex-none items-center gap-2 border-b border-rule px-3">
-      <h2 class="flex-none text-[13px] font-semibold text-ink">Agenda</h2>
+    <div class="flex h-10 flex-none items-center gap-2 border-b border-base-300 px-3">
+      <h2 class="flex-none text-[13px] font-semibold">Agenda</h2>
       <span v-if="rangeLabel" class="agate flex-none tabular">{{ rangeLabel }}</span>
       <span
         v-if="agenda.openTaskCount > 0"
@@ -79,7 +79,8 @@ const rangeLabel = computed(() => {
         · {{ groupCount(agenda.openTaskCount) }} open tasks
       </span>
       <button
-        class="ml-auto rounded-sm p-1 text-ink-3 hover:text-ink"
+        type="button"
+        class="btn btn-ghost btn-xs btn-circle ml-auto"
         :aria-label="agenda.loading ? 'Loading agenda' : 'Refresh agenda'"
         :title="agenda.loading ? 'Loading…' : 'Refresh'"
         @click="agenda.load(true)"
@@ -99,13 +100,9 @@ const rangeLabel = computed(() => {
 
       <!-- error -->
       <div v-else-if="agenda.error" class="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-        <IconGlyph name="alert" :size="26" class="text-ink-3" />
-        <p class="max-w-[36ch] text-[13px] text-ink-2">{{ agenda.error }}</p>
-        <button
-          class="rounded-[4px] px-3 py-1.5 text-[13px] font-semibold"
-          :style="{ background: 'var(--ink)', color: 'var(--invoked-ink)' }"
-          @click="agenda.load(true)"
-        >
+        <IconGlyph name="alert" :size="26" class="text-base-content/55" />
+        <p class="max-w-[36ch] text-[13px] text-base-content/70">{{ agenda.error }}</p>
+        <button class="btn btn-neutral btn-sm" @click="agenda.load(true)">
           Try again
         </button>
       </div>
@@ -125,13 +122,13 @@ const rangeLabel = computed(() => {
 
         <!-- day sections -->
         <section v-for="day in agenda.days" :key="day.key" class="mb-5">
-          <h3 class="mb-1.5 text-[12px] font-semibold text-ink">{{ dayLabel(day.key) }}</h3>
-          <div v-if="day.events.length === 0" class="agate border-l border-rule pl-3">No entries.</div>
+          <h3 class="mb-1.5 text-[12px] font-semibold">{{ dayLabel(day.key) }}</h3>
+          <div v-if="day.events.length === 0" class="agate border-l border-base-300 pl-3">No entries.</div>
           <ul v-else class="space-y-1">
             <li
               v-for="event in day.events"
               :key="`${event.id}-${event.startDate}`"
-              class="record-sheet flex items-baseline gap-3 rounded-[4px] px-3 py-2"
+              class="record-sheet flex items-baseline gap-3 rounded-field px-3 py-2"
             >
               <span
                 class="account-chip flex-none self-center"
@@ -141,12 +138,12 @@ const rangeLabel = computed(() => {
               />
               <span class="agate w-[11em] flex-none whitespace-nowrap tabular">{{ timeRange(event.startDate, event.endDate, event.allDay) }}</span>
               <span class="min-w-0 flex-1">
-                <span class="block truncate text-[13px] text-ink" :class="event.allDay ? 'font-normal text-ink-2' : 'font-semibold'">
+                <span class="block truncate text-[13px]" :class="event.allDay ? 'font-normal text-base-content/70' : 'font-semibold'">
                   {{ event.title }}
                 </span>
                 <span v-if="event.location" class="block truncate agate">{{ event.location }}</span>
               </span>
-              <span v-if="event.isRecurring" class="flex flex-none items-center text-ink-3" title="Recurring entry">
+              <span v-if="event.isRecurring" class="flex flex-none items-center text-base-content/55" title="Recurring entry">
                 <IconGlyph name="repeat" :size="12" />
                 <span class="sr-only">recurring</span>
               </span>
@@ -155,12 +152,12 @@ const rangeLabel = computed(() => {
         </section>
 
         <!-- open tasks -->
-        <section v-if="agenda.tasks.length > 0" class="mt-6 border-t border-rule pt-3">
-          <h3 class="mb-1.5 text-[12px] font-semibold text-ink">Open tasks</h3>
+        <section v-if="agenda.tasks.length > 0" class="mt-6 border-t border-base-300 pt-3">
+          <h3 class="mb-1.5 text-[12px] font-semibold">Open tasks</h3>
           <ul class="space-y-1">
-            <li v-for="task in agenda.tasks" :key="task.id" class="flex items-baseline gap-3 rounded-[4px] px-3 py-1.5 hover:bg-tint-soft">
+            <li v-for="task in agenda.tasks" :key="task.id" class="flex items-baseline gap-3 rounded-field px-3 py-1.5 hover:bg-base-300/50">
               <span class="agate w-[11em] flex-none whitespace-nowrap tabular">{{ dueLabel(task.dueDate) }}</span>
-              <span class="text-[13px] text-ink-2">{{ task.title }}</span>
+              <span class="text-[13px] text-base-content/70">{{ task.title }}</span>
             </li>
           </ul>
         </section>

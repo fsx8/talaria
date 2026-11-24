@@ -108,9 +108,10 @@ export interface MessageDetail {
   ccList: string;
   date: string;
   tags: string[];
-  /** Markdown (preferred) or plain text body, already converted server-side. */
+  /** Markdown (preferred), plain text, or raw HTML (`bodyIsHtml`) — HTML
+   *  bodies pass through the reader's sanitizer, never straight to the DOM. */
   body: string;
-  bodyFormat: "markdown" | "text";
+  bodyFormat: "markdown" | "text" | "html";
   attachments: AttachmentInfo[];
   authentication?: MessageAuthentication;
   bodyTruncated: boolean;
@@ -140,11 +141,28 @@ export interface MessageQuery {
   offset?: number;
 }
 
-/** SSE `mail` event payload from the sidecar. */
+/** SSE event payload from the sidecar. `hello` is the connect-time (and
+ *  reconnect) seed — it carries the authoritative global unread but must
+ *  not schedule a refresh (Round-2 perf: the hello-triggered second boot
+ *  search gated first paint behind a full re-scan). */
 export interface MailEvent {
   unread: number;
   previous: number;
   ts: string;
+  isHello?: boolean;
+}
+
+/** One-call boot payload from `GET /api/bootstrap` (Round-2 perf): the
+ *  sidecar assembles accounts, the flat folder list, the recent first page
+ *  and the global unread from its TTL cache. */
+export interface BootstrapData {
+  accounts: Account[];
+  folders: Folder[];
+  recent: SearchResult;
+  /** The sidecar's global unread (the SSE poll's baseline), if known. */
+  unread: number | null;
+  /** Freshness of the oldest cache ingredient that built this answer. */
+  generatedAt: string;
 }
 
 export interface HealthInfo {

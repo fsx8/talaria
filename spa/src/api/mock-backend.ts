@@ -10,7 +10,7 @@
  * VITE_BACKEND=mock selects it; the UI labels the session "Demo data".
  */
 
-import type { MailBackend } from "./backend-interface";
+import type { AttachmentPayload, ComposeTarget, CreateFolderResult, DraftFields, DraftResult, MailBackend, MessagePatch, MessageRef, MessageSource, Recipient, UpdateResult } from "./backend-interface";
 import { ACCOUNT_PALETTE_SIZE } from "./real-backend";
 import type {
   Account,
@@ -31,6 +31,19 @@ import type {
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+
+/** Small pause so the mock's optimistic-UI paths are observable. */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
 
 interface Seed {
   id: string;
@@ -1091,6 +1104,8 @@ function textMatch(hay: string, needle: string): boolean {
 export function createMockBackend(): MailBackend {
   const compiled = compile();
   const threadKeys = new Map<string, string>();
+  /** Draft id → the message it quotes (reply/forward drafts keep the quote on autosave). */
+  const draftQuotes = new Map<string, string>();
   for (const seed of ACCOUNT_SEEDS) {
     for (const m of seed.messages) {
       if (m.thread) threadKeys.set(m.id, m.thread);
@@ -1107,9 +1122,107 @@ export function createMockBackend(): MailBackend {
     return unread;
   }
 
+  /** Folder tallies after an in-memory write (same loop compile() runs). */
+  function recomputeTallies() {
+    for (const folder of compiled.folders) {
+      let total = 0;
+      let unread = 0;
+      for (const row of compiled.messages.values()) {
+        if (row.summary.folderPath !== folder.path) continue;
+        total += 1;
+        if (!row.summary.read) unread += 1;
+      }
+      folder.total = total;
+      folder.unread = unread;
+    }
+  }
+
   /** Thread membership is transitive: any member id resolves the whole thread. */
   function threadOfMessage(id: string): string | null {
     return threadKeys.get(id) ?? null;
+  }
+
+  /* ---- W2 drafts: the demo compose helpers (closure over the register) ---- */
+
+  function recipientsHeader(recipients?: Recipient[]): string {
+    return (recipients ?? [])
+      .filter((r) => r.email)
+      .map((r) => (r.name && r.name !== r.email ? `${r.name} <${r.email}>` : r.email))
+      .join(", ");
+  }
+
+  /** The demo Drafts folder of an account — made on first use. */
+  function draftsFolderFor(accountId: string): Folder {
+    const existing = compiled.folders.find((f) => f.accountId === accountId && f.kind === "drafts");
+    if (existing) return existing;
+    const root = compiled.folders.find((f) => f.accountId === accountId);
+    const path = `${root ? root.path.slice(0, root.path.lastIndexOf("/")) : "imap://demo@mail.example"}/Drafts`;
+    const folder: Folder = { path, name: "Drafts", kind: "drafts", accountId, total: 0, unread: 0, depth: 0, favorite: false };
+    compiled.folders.push(folder);
+    return folder;
+  }
+
+  /** Store (or rewrite) one demo draft, mirroring the addon's contract.
+   *  keepQuote=true with draftId replaces the typed text and keeps the
+   *  quote block the demo added when the draft was created (reply/fwd);
+   *  undefined fields keep what the demo draft already has. */
+  function storeDraft(fields: DraftFields, draftId: string | undefined, keepQuote: boolean, meta: { from: string; subject?: string; quoteOf?: CompiledMessage }): DraftResult {
+    let row = draftId ? compiled.messages.get(draftId) : undefined;
+    const identityAccount =
+      compiled.accounts.find((a) => a.identities.some((i) => i.email === meta.from)) ?? compiled.accounts[0]!;
+    const drafts = draftsFolderFor(identityAccount.id);
+    const to = recipientsHeader(fields.to);
+    const cc = recipientsHeader(fields.cc);
+    const subject = fields.subject !== undefined ? fields.subject : (row?.summary.subject ?? "");
+    const quoteId = meta.quoteOf?.summary.id ?? (draftId ? draftQuotes.get(draftId) : undefined);
+    const quoted = quoteId ? compiled.messages.get(quoteId) : undefined;
+    // Quote block: appended when a reply/forward creates the draft, and kept
+    // on updates only while keepQuote asks for it (autosave path).
+    const keepQuoteBlock = meta.quoteOf !== undefined || (draftId !== undefined && keepQuote);
+    const quote =
+      quoted && keepQuoteBlock && fields.body !== undefined
+        ? `\n\n<blockquote><p>On ${quoted.summary.date}, ${quoted.summary.author} wrote:</p><p>${escapeHtml(quoted.detail.body)}</p></blockquote>`
+        : "";
+    const bodyHtml =
+      fields.body !== undefined
+        ? /<[a-z][\s\S]*>/i.test(fields.body)
+          ? fields.body // already HTML (forward quotes): store verbatim
+          : `<p>${escapeHtml(fields.body).replaceAll("\n", "<br />")}</p>${quote}`
+        : (row?.detail.body ?? "");
+    if (row) {
+      row.summary.subject = subject;
+      if (fields.to !== undefined) row.summary.recipients = to;
+      if (fields.cc !== undefined) row.summary.ccList = cc;
+      if (fields.body !== undefined) {
+        row.detail.body = bodyHtml;
+        row.detail.bodyFormat = "html";
+      }
+      if (quoteId) draftQuotes.set(row.summary.id, quoteId);
+    } else {
+      const id = `m-draft-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4)}`;
+      const summary: MessageSummary = {
+        id,
+        folderPath: drafts.path,
+        subject: subject || "(no subject)",
+        author: meta.from,
+        recipients: to,
+        ccList: cc,
+        date: new Date().toISOString(),
+        read: true,
+        flagged: false,
+        tags: [],
+        preview: (fields.body ?? "").slice(0, 120),
+      };
+      row = {
+        summary,
+        detail: { body: bodyHtml, bodyFormat: "html", attachments: [], authentication: undefined, bodyTruncated: false },
+      };
+      compiled.messages.set(id, row);
+      if (quoteId) draftQuotes.set(id, quoteId);
+    }
+    recomputeTallies();
+    lastUnread = countUnread();
+    return { success: true, messageId: row.summary.id, folderPath: drafts.path, subject, to };
   }
 
   return {
@@ -1230,6 +1343,119 @@ export function createMockBackend(): MailBackend {
       }
       // The demo register never truncates; chunking is emulated for parity.
       return { text: detail.body.slice(offset), nextBodyOffset: undefined, bodyTruncated: false };
+    },
+
+    /* ---- Stage 2: read-for-export (fabricated raw source, honest bytes) ---- */
+
+    /** A minimal RFC 822 rendering of a demo record — enough for the .eml
+     *  export flow to behave exactly as it does against the real sidecar. */
+    async getMessageSource(id, folderPath): Promise<MessageSource> {
+      const detail = await this.getMessage(id, folderPath);
+      const lines = [
+        `Message-ID: <${detail.id}>`,
+        `Date: ${detail.date}`,
+        `From: ${detail.author}`,
+        `To: ${detail.recipients || "(undisclosed-recipients)"}`,
+        detail.ccList ? `Cc: ${detail.ccList}` : "",
+        `Subject: ${detail.subject}`,
+        "MIME-Version: 1.0",
+        "Content-Type: text/plain; charset=utf-8",
+        "Content-Transfer-Encoding: 8bit",
+        "",
+        detail.body,
+      ].filter((line) => line !== "");
+      return { bytes: new TextEncoder().encode(lines.join("\r\n")) };
+    },
+
+    async getAttachment(id, folderPath, attachment): Promise<AttachmentPayload> {
+      const detail = await this.getMessage(id, folderPath);
+      const known = detail.attachments.find((a) => a.name === attachment.name);
+      if (!known) throw new Error("Attachment not found in the demo register.");
+      // Deterministic demo bytes (never a real document): a header line, the
+      // attachment name and padding — enough to prove the download path.
+      const text = [
+        `Talaria demo attachment — ${known.name}`,
+        `content-type: ${known.contentType ?? "application/octet-stream"}`,
+        "",
+      ].join(" ").padEnd(Math.min(known.size ?? 512, 640), "·");
+      return { bytes: new TextEncoder().encode(text) };
+    },
+
+    /* ---- W1 organize (Round 3): demo writes, strictly in memory ---- */
+
+    async updateMessages(items: MessageRef[], patch: MessagePatch): Promise<UpdateResult> {
+      await delay(180); // let the optimistic UI be visible
+      let updated = 0;
+      const notFound: string[] = [];
+      for (const item of items) {
+        const row = compiled.messages.get(item.id);
+        if (!row || row.summary.folderPath !== item.folderPath) {
+          notFound.push(item.id);
+          continue;
+        }
+        if (patch.read !== undefined) row.summary.read = patch.read;
+        if (patch.flagged !== undefined) row.summary.flagged = patch.flagged;
+        if (patch.moveTo !== undefined) row.summary.folderPath = patch.moveTo;
+        updated += 1;
+      }
+      recomputeTallies();
+      lastUnread = countUnread();
+      return { updated, notFound };
+    },
+
+    async createFolder(parentPath, name): Promise<CreateFolderResult> {
+      await delay(180);
+      const taken = compiled.folders.some((f) => f.path === `${parentPath}/${name}`);
+      if (taken) throw new Error("A folder with that name already exists in the demo register.");
+      const parent = compiled.folders.find((f) => f.path === parentPath);
+      compiled.folders.push({
+        path: `${parentPath}/${name}`,
+        name,
+        kind: "folder",
+        accountId: parent?.accountId ?? compiled.accounts[0]?.id ?? "account1",
+        total: 0,
+        unread: 0,
+        depth: (parent?.depth ?? -1) + 1,
+        favorite: false,
+      });
+      return { name, path: `${parentPath}/${name}` };
+    },
+
+    /* ---- W2 drafts composer (Round 3, Stage 3): demo drafts, in memory ----
+     * Same shapes the real backend answers: a Drafts folder per identity
+     * (created on demand, like Thunderbird's drafts-folder pref), messageId +
+     * folderPath back, updates rewrite in place, replies/forwards prefill
+     * recipients the way Thunderbird computes them (simplified). */
+
+    async saveDraft(fields: DraftFields, draftId?: string, keepQuote = true): Promise<DraftResult> {
+      await delay(160);
+      const from = fields.from || compiled.accounts[0]!.identities[0]!.email;
+      return storeDraft(fields, draftId, keepQuote, { from, subject: fields.subject || "(no subject)" });
+    },
+
+    async replyDraft(target: ComposeTarget, fields: DraftFields, replyAll: boolean): Promise<DraftResult> {
+      await delay(160);
+      const original = compiled.messages.get(target.id);
+      if (!original) throw new Error("Message not found in the demo register.");
+      const from = fields.from || original.summary.recipients || compiled.accounts[0]!.identities[0]!.email;
+      const subject = /^re:/i.test(original.summary.subject) ? original.summary.subject : `Re: ${original.summary.subject}`;
+      // The prefill (reply: the author; reply-all: author + everyone else) is
+      // authoritative here — the demo stores exactly the fields passed.
+      void replyAll;
+      return storeDraft(fields, undefined, true, { from, subject, quoteOf: original });
+    },
+
+    async forwardDraft(target: ComposeTarget, fields: DraftFields): Promise<DraftResult> {
+      await delay(160);
+      const original = compiled.messages.get(target.id);
+      if (!original) throw new Error("Message not found in the demo register.");
+      const from = fields.from || compiled.accounts[0]!.identities[0]!.email;
+      const subject = `Fwd: ${original.summary.subject}`;
+      return storeDraft(fields, undefined, true, { from, subject, quoteOf: original });
+    },
+
+    async hasComposeTools(): Promise<boolean> {
+      return true;
     },
 
     async listAddressBooks() {

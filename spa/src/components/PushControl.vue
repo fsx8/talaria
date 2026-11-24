@@ -68,8 +68,8 @@ const title = (): string => {
 <template>
   <button
     v-if="push && state !== 'unconfigured'"
-    class="flex h-7 w-7 items-center justify-center rounded-[3px]"
-    :class="state === 'subscribed' ? 'bg-tint text-ink' : 'text-ink-3 hover:text-ink'"
+    class="btn btn-ghost btn-square btn-sm h-7 w-7"
+    :class="state === 'subscribed' ? 'bg-base-300' : ''"
     :disabled="state === 'denied' || state === 'unsupported' || state === 'busy'"
     :aria-pressed="state === 'subscribed'"
     :aria-label="`Push notifications: ${title()}`"

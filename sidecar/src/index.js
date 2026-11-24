@@ -1,26 +1,35 @@
 #!/usr/bin/env node
 /**
- * tbweb — the Talaria sidecar (unofficial Thunderbird web client).
+ * tbweb — unofficial Thunderbird web client, Phase 1 sidecar.
  *
- * Runs next to Thunderbird — typically inside the Thunderbird container's
- * network namespace (`network_mode: "service:thunderbird"`), or on any host
- * that can reach the add-on — where it can reach the commonpost add-on's
- * JSON-RPC server (single endpoint POST /, stable port with failover across
- * a configurable range) and serve the PWA to your reverse proxy or tunnel.
+ * Runs inside the thunderbird container's network namespace
+ * (`network_mode: "service:thunderbird"`), where it can reach the commonpost
+ * add-on's loopback-only JSON-RPC server (POST /, ports 8780 with failover
+ * 8781–8789) and is itself reachable from the dockflare tunnel as
+ * `http://thunderbird:8942`.
  *
- * Responsibilities:
+ * Responsibilities (Phase 1 + Phase 4 + Round-2 perf):
  *   - GET  /health         — liveness + commonpost reachability probe
- *   - POST /api/tools/call — JSON-RPC `tools/call` proxy (Bearer + bridge header added here)
+ *   - POST /api/tools/call — JSON-RPC `tools/call` proxy (Bearer + bridge header added here);
+ *                            cacheable read tools answered from an in-memory TTL cache
+ *                            with stale-while-revalidate (see cache.js); W1 write tools
+ *                            (updateMessage, createFolder, applyFilters) pass through and
+ *                            flush the mail-derived cache keys on success
  *   - POST /api/tools/list — JSON-RPC `tools/list` passthrough
+ *   - GET  /api/bootstrap  — accounts + folders + recent first page + global unread in one
+ *                            call, assembled from the cache; prewarmed on mail change + every 5 min
+ *   - GET  /api/cache      — cache stats (tool names + ages, no payloads)
  *   - GET  /events         — SSE: heartbeat every 15 s, `mail` events on unread-count change
  *   - GET  /push/public-key · POST /push/subscribe|unsubscribe|test — VAPID web-push
  *   - GET  /*              — static files from public/ (index.html fallback for the SPA)
  *
- * SECURITY MODEL: no application-level auth by design — put an
- * authenticating reverse proxy in front (Cloudflare Access, Authelia,
- * oauth2-proxy, tailnet-only exposure, …). The COMMONPOST token never
- * leaves this process: it is attached server-side to every upstream call
- * and is never exposed to the browser, neither via headers nor responses.
+ * SECURITY MODEL: no application-level auth by design — Cloudflare Access
+ * (group `sf`) is the authentication gate, exactly like the thunderbird and
+ * chromium selkies GUIs. The COMMONPOST token never leaves this process: it
+ * is attached server-side to every upstream call and is never exposed to
+ * the browser, neither via headers nor responses. The sidecar itself is not
+ * published on the host; it is reachable only from the tunnel and from the
+ * compose_default network.
  *
  * Upstream protocol facts (verified against commonpost v0.26.1 source):
  *   - Single endpoint `POST /`, JSON-RPC 2.0, `Authorization: Bearer <token>`
@@ -44,6 +53,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import * as push from './push.js';
+import { cacheSnapshot, cachedCallMeta, flushAfterWrite, flushTool, isCacheable, WRITE_TOOLS } from './cache.js';
 
 /* ------------------------------------------------------------------ */
 /* Configuration                                                       */
@@ -94,6 +104,9 @@ if (pollCallOverride) {
     process.exit(1);
   }
 }
+
+/** Prewarm interval for the /api/bootstrap cache keys (Round-2 perf). */
+const PREWARM_MS = Number(process.env.TBWEB_PREWARM_MS ?? 300000);
 
 // Static root: default is the app's own public/ snapshot; deployments can
 // point it at the live bind-mount (TBWEB_PUBLIC_DIR=/app/public) so SPA
@@ -224,6 +237,50 @@ async function probeCommonpost(force = false) {
 /* ------------------------------------------------------------------ */
 
 /**
+ * One proxied tool call, parsed: the data payload or a thrown Error whose
+ * `kind` mirrors rpc's failure kinds ('rpc' = tool-level failure, i.e. a
+ * valid proxied answer that should surface as HTTP 200 ok:false).
+ * @param {string} name
+ * @param {Record<string, unknown>} args
+ * @returns {Promise<any>}
+ */
+async function callToolData(name, args) {
+  const r = await rpc('tools/call', { name, arguments: args });
+  if (!r.ok) {
+    const err = new Error(r.error?.message ?? String(r.error ?? `${name} failed`));
+    /** @type {any} */ (err).kind = r.kind;
+    throw err;
+  }
+  const parsed = parseToolResult(r.result);
+  if (!parsed.ok) {
+    const err = new Error(JSON.stringify(parsed.error)?.slice(0, 300) ?? `${name} returned an unusable payload`);
+    /** @type {any} */ (err).kind = 'rpc'; // tool-level: keep the 200 ok:false envelope
+    throw err;
+  }
+  return parsed.data;
+}
+
+/**
+ * The SPA's default register query (real-backend.ts `recentQueryArguments`):
+ * no text/scope/filter → bounded to the last 14 days, floored to the hour so
+ * the arguments — and therefore the cache key — stay stable within the hour.
+ * /api/bootstrap's `recent` and the prewarm deliberately use the EXACT
+ * arguments the SPA's boot query sends, so one cache entry serves both.
+ * KEEP IN SYNC with compose/tbweb/spa/src/api/real-backend.ts.
+ * @returns {Record<string, unknown>}
+ */
+function recentQueryArgs() {
+  return {
+    query: '',
+    maxResults: 50,
+    offset: 0,
+    fields: ['date', 'author', 'recipients', 'ccList', 'subject', 'read', 'flagged', 'tags', 'preview'],
+    startDate: new Date(Math.floor((Date.now() - 14 * 86400000) / 3600000) * 3600000).toISOString(),
+  };
+}
+
+
+/**
  * Extract the payload from a JSON-RPC result. tools/call results are
  * `{content:[{type:"text",text},...], isError?}` where content[0].text is the
  * JSON-stringified payload; tolerate a "bridge outdated" notice (extra
@@ -329,13 +386,16 @@ function broadcastMail(count) {
       sseClients.delete(res);
     }
   }
-  // Fan the change out to every stored web-push subscription
+  // Phase 4: fan the change out to every stored web-push subscription
   // (payload {unread, ts}; gone subscriptions are pruned by the sender).
   void push.notifyAll({ unread: count, ts: payload.ts });
 }
 
 async function pollUnread() {
   try {
+    // The poll probe goes straight to rpc(), never through the cache: its
+    // whole job is to observe the live count (a cached answer would never
+    // detect a change).
     const r = await rpc('tools/call', { name: POLL_CALL.name, arguments: POLL_CALL.arguments });
     if (!r.ok) {
       throw new Error(r.kind === 'rpc' ? String(r.error?.message ?? r.error) : `commonpost unreachable (${String(r.error?.message ?? r.error)})`);
@@ -351,12 +411,31 @@ async function pollUnread() {
       console.log(`[tbweb] unread baseline: ${count}`);
     } else if (count !== lastUnread) {
       console.log(`[tbweb] unread changed: ${lastUnread} -> ${count}`);
+      // Mail moved: search results and folder tallies may be stale from
+      // here on — flush the mail-derived cache keys BEFORE any client can
+      // react, then re-warm them so the next SPA refresh / bootstrap call
+      // hits fresh entries.
+      flushTool('searchMessages');
+      flushTool('listFolders');
       broadcastMail(count);
+      prewarmBootstrap();
     }
   } catch (err) {
     lastPollError = String(err?.message ?? err);
     console.warn(`[tbweb] poll failed: ${lastPollError}`);
   }
+}
+
+/**
+ * Refresh the cached keys /api/bootstrap assembles from, without awaiting:
+ * called when a mail change was detected and on a fixed interval, so the
+ * bootstrap answer is always warm even hours after the last visitor.
+ */
+function prewarmBootstrap() {
+  const recentArgs = recentQueryArgs();
+  void cachedCallMeta('listAccounts', {}, () => callToolData('listAccounts', {})).catch(() => {});
+  void cachedCallMeta('listFolders', {}, () => callToolData('listFolders', {})).catch(() => {});
+  void cachedCallMeta('searchMessages', recentArgs, () => callToolData('searchMessages', recentArgs)).catch(() => {});
 }
 
 /* ------------------------------------------------------------------ */
@@ -416,7 +495,7 @@ async function serveStatic(req, reply) {
 
   let ext = path.extname(target).toLowerCase();
   if (!ext || !statSyncSafe(target)) {
-    // Extension-less route -> SPA fallback
+    // Extension-less route (Vue router arrives in Phase 2) -> SPA fallback
     const fallback = path.join(PUBLIC_DIR, 'index.html');
     if (statSyncSafe(fallback)) {
       target = fallback;
@@ -465,14 +544,24 @@ app.post('/api/tools/call', async (req, reply) => {
   if (typeof body.name !== 'string' || !body.name) {
     return reply.code(400).send({ ok: false, error: 'body must be JSON {name: string, arguments?: object}' });
   }
-  const r = await rpc('tools/call', { name: body.name, arguments: body.arguments ?? {} });
-  if (!r.ok) {
-    const code = r.kind === 'rpc' ? 200 : 502; // tool-level failure is a valid proxied answer
-    return reply.code(code).send({ ok: false, error: r.error?.message ?? r.error });
+  const args = body.arguments ?? {};
+  try {
+    // Cacheable read tools (searchMessages/listFolders/listAccounts/…)
+    // answer from the sidecar's TTL cache with stale-while-revalidate;
+    // everything else (getMessage(s), contacts, writes, unknown tools)
+    // passes straight through. The SSE poll probe never routes through here.
+    const { value } = await cachedCallMeta(body.name, args, () => callToolData(body.name, args));
+    // W1 organize (Round 3): a successful write changes what the read
+    // caches hold (moves change search results + folder tallies, folder
+    // creation changes listFolders) — drop those entries before the answer
+    // goes out so the client's refetch sees fresh data.
+    if (WRITE_TOOLS.has(body.name)) flushAfterWrite();
+    return reply.send({ ok: true, data: value });
+  } catch (err) {
+    const kind = /** @type {any} */ (err)?.kind;
+    const code = kind === 'rpc' ? 200 : 502; // tool-level failure is a valid proxied answer
+    return reply.code(code).send({ ok: false, error: err?.message ?? String(err) });
   }
-  const parsed = parseToolResult(r.result);
-  if (!parsed.ok) return reply.send({ ok: false, error: parsed.error });
-  return reply.send({ ok: true, data: parsed.data });
 });
 
 app.post('/api/tools/list', async (req, reply) => {
@@ -481,6 +570,38 @@ app.post('/api/tools/list', async (req, reply) => {
   const parsed = parseToolResult(r.result);
   if (!parsed.ok) return reply.send({ ok: false, error: parsed.error });
   return reply.send({ ok: true, data: parsed.data });
+});
+
+app.get('/api/bootstrap', async (req, reply) => {
+  // One call for the SPA's boot: accounts + folders + recent first page +
+  // the global unread, assembled from the sidecar cache (missing keys are
+  // fetched in parallel; single-flight dedupes concurrent bootstraps).
+  // generatedAt = freshness of the OLDEST cache ingredient that built this
+  // answer, so clients can tell whether the payload predates their snapshot.
+  const recentArgs = recentQueryArgs();
+  try {
+    const [accounts, folders, recent] = await Promise.all([
+      cachedCallMeta('listAccounts', {}, () => callToolData('listAccounts', {})),
+      cachedCallMeta('listFolders', {}, () => callToolData('listFolders', {})),
+      cachedCallMeta('searchMessages', recentArgs, () => callToolData('searchMessages', recentArgs)),
+    ]);
+    const oldest = Math.min(accounts.at, folders.at, recent.at);
+    return {
+      ok: true,
+      accounts: accounts.value,
+      folders: folders.value,
+      recent: recent.value,
+      unread: lastUnread,
+      generatedAt: new Date(oldest).toISOString(),
+    };
+  } catch (err) {
+    return reply.code(502).send({ ok: false, error: err?.message ?? String(err) });
+  }
+});
+
+app.get('/api/cache', async () => {
+  // Ops/stats: which tools are cached and how old — no payloads.
+  return { ok: true, ...cacheSnapshot() };
 });
 
 app.get('/events', (req, reply) => {
@@ -505,7 +626,7 @@ app.get('/events', (req, reply) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* web-push: public key, subscriptions, test send                      */
+/* web-push (Phase 4): public key, subscriptions, test send            */
 /* ------------------------------------------------------------------ */
 
 app.get('/push/public-key', async () => {
@@ -543,7 +664,8 @@ app.setErrorHandler((err, req, reply) => {
 const healthTimer = setInterval(() => void probeCommonpost(true), HEALTH_CACHE_MS);
 const heartbeatTimer = setInterval(sseHeartbeat, SSE_HEARTBEAT_MS);
 const pollTimer = setInterval(pollUnread, SSE_POLL_MS);
-for (const t of [healthTimer, heartbeatTimer, pollTimer]) t.unref?.();
+const prewarmTimer = setInterval(prewarmBootstrap, PREWARM_MS);
+for (const t of [healthTimer, heartbeatTimer, pollTimer, prewarmTimer]) t.unref?.();
 
 async function main() {
   // Baselines before accepting traffic: health + initial unread count.
@@ -553,6 +675,7 @@ async function main() {
     `[tbweb] commonpost ${cp.reachable ? `reachable on 127.0.0.1:${cp.port}` : 'UNREACHABLE'} serverInfo=${JSON.stringify(cp.serverInfo)}`,
   );
   await pollUnread();
+  prewarmBootstrap(); // the first visitor of the day gets a warm bootstrap
 
   await app.listen({ port: LISTEN_PORT, host: LISTEN_HOST });
   console.log(`[tbweb] listening on ${LISTEN_HOST}:${LISTEN_PORT} (static: ${PUBLIC_DIR})`);

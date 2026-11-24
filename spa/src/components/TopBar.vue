@@ -4,23 +4,32 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { computed, ref, watch } from "vue";
-import IconGlyph from "./IconGlyph.vue";
+import IconGlyph, { type IconName } from "./IconGlyph.vue";
 import PushControl from "./PushControl.vue";
+import SaveSearchControl from "./SaveSearchControl.vue";
 import ThemeMenu from "./ThemeMenu.vue";
 import { clockTime, groupCount } from "../composables/format";
 import { useAccountsStore } from "../stores/accounts";
+import { useComposeStore } from "../stores/compose";
 import { useMailStore } from "../stores/mail";
 import { useUiStore } from "../stores/ui";
 
 const ui = useUiStore();
 const mail = useMailStore();
 const accounts = useAccountsStore();
+const compose = useComposeStore();
 
 const searchInput = ref<HTMLInputElement | null>(null);
 const today = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" }).format(new Date());
 
-/** Live unread: the SSE tally once events flow, the folder tally before that. */
-const folioUnread = computed(() => mail.lastMailEvent?.unread ?? accounts.registerUnread);
+/** Live unread: the SSE tally once events flow, the folder tally before that.
+ *  With hidden accounts (Stage 2) the SSE global overcounts — the visible
+ *  rail tally is the honest number (the backend still indexes hidden mail). */
+const folioUnread = computed(() =>
+  accounts.hasHiddenAccounts
+    ? accounts.registerUnread
+    : (mail.lastMailEvent?.unread ?? accounts.registerUnread),
+);
 
 /** The folio flip: the last SSE arrival shows as a stamped correction for a while. */
 const lateEntryVisible = ref(false);
@@ -52,52 +61,147 @@ function clearSearch() {
   mail.setSearchText("");
   searchInput.value?.focus();
 }
+
+/* Stage 3: the posture chip grows a third state — with the draft tier live
+ * (and its controls shown) this view drafts, files and flags. */
+const posture = computed<{ label: string; icon: IconName; hint: string }>(() => {
+  if (mail.actionsVisible && compose.entryVisible) {
+    return { label: "drafts enabled", icon: "compose", hint: "W2 drafts: compose, reply, reply-all and forward save drafts. Sending stays in Thunderbird." };
+  }
+  if (mail.actionsVisible) {
+    return { label: "organize enabled", icon: "folder-in", hint: "W1 organize: mark read/unread, flag, move to folder, create folder. Send and drafts stay in Thunderbird." };
+  }
+  return { label: "read-only view", icon: "book", hint: "File, flag and send live in Thunderbird." };
+});
 </script>
 
 <template>
   <header
-    class="relative z-20 border-b border-rule bg-paper"
+    class="relative z-20 border-b border-base-300 bg-base-200"
     role="banner"
   >
-    <div class="flex h-14 items-center gap-3 px-3 md:px-4">
+    <nav class="navbar h-14 min-h-14 gap-3 px-3 md:px-4">
       <!-- masthead -->
       <button
-        class="flex items-center gap-2 rounded-sm text-ink max-lg:pr-1"
+        class="flex items-center gap-2 rounded-sm max-lg:pr-1"
         :aria-label="ui.railDrawerOpen ? 'Close folders' : 'Open folders'"
         @click="ui.toggleRailDrawer()"
       >
-        <IconGlyph :name="ui.railDrawerOpen ? 'close' : 'menu'" :size="18" class="lg:hidden text-ink-2" />
+        <IconGlyph :name="ui.railDrawerOpen ? 'close' : 'menu'" :size="18" class="text-base-content/70 lg:hidden" />
         <span class="hidden lg:inline-block">
           <span class="block font-sans text-[15px] font-bold leading-none tracking-[0.02em]">TALARIA</span>
           <span class="masthead-rule mt-1 w-full" aria-hidden="true" />
         </span>
       </button>
-      <span class="lg:hidden flex items-center gap-1.5">
+      <span class="flex items-center gap-1.5 lg:hidden">
         <span class="font-sans text-[15px] font-bold leading-none tracking-[0.02em]">TALARIA</span>
         <span class="masthead-rule mt-0.5 w-6" aria-hidden="true" />
       </span>
 
       <span
-        class="hidden md:inline-flex items-center gap-1 rounded-full border border-rule px-2 py-0.5 agate !text-ink-2"
-        title="Every write tool is disabled server-side. File, flag and send live in Thunderbird."
+        class="badge badge-ghost badge-sm agate hidden gap-1 !font-normal md:inline-flex"
+        :title="posture.hint"
       >
-        <IconGlyph name="book" :size="12" />
-        read-only view
+        <IconGlyph :name="posture.icon" :size="12" />
+        {{ posture.label }}
       </span>
 
+      <!-- Stage 3: the drafts composer entry (hidden when the backend or
+           the courtesy switch says no) -->
+      <button
+        v-if="compose.entryVisible"
+        type="button"
+        class="btn btn-primary btn-sm h-8 gap-1.5 px-2.5 md:px-3"
+        title="New message — saves as a draft (C)"
+        @click="compose.openNew()"
+      >
+        <IconGlyph name="compose" :size="14" />
+        <span class="hidden md:inline">Compose</span>
+        <span class="md:hidden">New</span>
+      </button>
+
       <!-- search: operators pass through to the sidecar; own row on phones -->
-      <div class="hidden min-w-[110px] flex-1 md:block md:max-w-[440px]">
-        <div class="relative">
+      <div class="hidden min-w-[110px] flex-1 md:block md:max-w-[460px]">
+        <div class="flex w-full items-center">
+          <label class="input input-sm h-8 min-w-0 flex-1 items-center gap-0 pl-2 pr-1">
+            <IconGlyph
+              name="search"
+              :size="15"
+              class="pointer-events-none text-base-content/55"
+            />
+            <input
+              id="talaria-search"
+              ref="searchInput"
+              type="search"
+              class="grow bg-transparent px-2 text-[13px]"
+              placeholder="Search — from:, subject:, participant:@domain…"
+              aria-label="Search mail"
+              :value="mail.searchText"
+              @input="onSearchInput"
+              @keydown.escape="clearSearch"
+            />
+            <button
+              v-if="mail.searchText"
+              class="btn btn-ghost btn-xs btn-circle"
+              aria-label="Clear search"
+              @click="clearSearch"
+            >
+              <IconGlyph name="close" :size="13" />
+            </button>
+          </label>
+          <SaveSearchControl />
+        </div>
+      </div>
+
+      <!-- folio: date, live unread tally, late-entries stamp -->
+      <div class="ml-auto flex flex-none items-center gap-2">
+        <span class="agate hidden xl:inline">{{ today }}</span>
+        <span
+          class="flex items-center gap-1.5 rounded-field border border-base-300 bg-base-100 px-2 py-1"
+          title="Unread across all accounts (Trash and Junk excluded)"
+        >
+          <span class="unread-dot" aria-hidden="true" />
+          <span class="tabular text-[12px] font-semibold">{{ groupCount(folioUnread) }}</span>
+          <span class="sr-only">unread messages</span>
+        </span>
+        <span
+          v-if="lateEntryVisible && lateDelta > 0"
+          :key="mail.lastMailEventAt"
+          class="badge badge-soft badge-primary agate flip-step gap-1 !font-semibold"
+          aria-live="polite"
+        >
+          <IconGlyph name="mail" :size="12" />
+          +{{ lateDelta }} · {{ clockTime(mail.lastMailEvent!.ts) }}
+        </span>
+        <PushControl />
+        <ThemeMenu />
+        <button
+          type="button"
+          class="btn btn-ghost btn-square btn-sm h-7 w-7"
+          :class="ui.activeView === 'settings' ? 'bg-base-300 text-base-content' : ''"
+          :aria-current="ui.activeView === 'settings' ? 'page' : undefined"
+          aria-label="Settings"
+          title="Settings"
+          @click="ui.openView('settings')"
+        >
+          <IconGlyph name="gear" :size="14" />
+        </button>
+      </div>
+    </nav>
+
+    <!-- phone: full-width search row -->
+    <div class="relative border-t border-base-300 px-3 py-2 md:hidden">
+      <div class="flex w-full items-center">
+        <label class="input input-sm h-9 min-w-0 flex-1 items-center gap-0 pl-2 pr-1">
           <IconGlyph
             name="search"
             :size="15"
-            class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3"
+            class="pointer-events-none text-base-content/55"
           />
           <input
-            id="talaria-search"
-            ref="searchInput"
+            id="talaria-search-phone"
             type="search"
-            class="h-8 w-full rounded-[4px] border border-rule bg-sheet pl-8 pr-8 text-[13px] text-ink placeholder:text-ink-3 focus:border-rule-strong focus:outline-none"
+            class="grow bg-transparent px-2 text-[13px]"
             placeholder="Search — from:, subject:, participant:@domain…"
             aria-label="Search mail"
             :value="mail.searchText"
@@ -106,66 +210,15 @@ function clearSearch() {
           />
           <button
             v-if="mail.searchText"
-            class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1 text-ink-3 hover:text-ink"
+            class="btn btn-ghost btn-xs btn-circle"
             aria-label="Clear search"
             @click="clearSearch"
           >
             <IconGlyph name="close" :size="13" />
           </button>
-        </div>
+        </label>
+        <SaveSearchControl />
       </div>
-
-      <!-- folio: date, live unread tally, late-entries stamp -->
-      <div class="ml-auto flex flex-none items-center gap-2">
-        <span class="agate hidden xl:inline">{{ today }}</span>
-        <span
-          class="flex items-center gap-1.5 rounded-[4px] border border-rule px-2 py-1"
-          title="Unread across all accounts (Trash and Junk excluded)"
-        >
-          <span class="unread-dot" aria-hidden="true" />
-          <span class="tabular text-[12px] font-semibold text-ink">{{ groupCount(folioUnread) }}</span>
-          <span class="sr-only">unread messages</span>
-        </span>
-        <span
-          v-if="lateEntryVisible && lateDelta > 0"
-          :key="mail.lastMailEventAt"
-          class="flip-step inline-flex items-center gap-1 rounded-[4px] px-1.5 py-1 text-[11px] font-semibold tabular"
-          :style="{ background: 'var(--accent-soft)', color: 'var(--accent)' }"
-          aria-live="polite"
-        >
-          <IconGlyph name="mail" :size="12" />
-          +{{ lateDelta }} · {{ clockTime(mail.lastMailEvent!.ts) }}
-        </span>
-        <PushControl />
-        <ThemeMenu />
-      </div>
-    </div>
-
-    <!-- phone: full-width search row -->
-    <div class="relative border-t border-rule px-3 py-2 md:hidden">
-      <IconGlyph
-        name="search"
-        :size="15"
-        class="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-ink-3"
-      />
-      <input
-        id="talaria-search-phone"
-        type="search"
-        class="h-9 w-full rounded-[4px] border border-rule bg-sheet pl-8 pr-8 text-[13px] text-ink placeholder:text-ink-3 focus:border-rule-strong focus:outline-none"
-        placeholder="Search — from:, subject:, participant:@domain…"
-        aria-label="Search mail"
-        :value="mail.searchText"
-        @input="onSearchInput"
-        @keydown.escape="clearSearch"
-      />
-      <button
-        v-if="mail.searchText"
-        class="absolute right-5 top-1/2 -translate-y-1/2 rounded-sm p-1 text-ink-3 hover:text-ink"
-        aria-label="Clear search"
-        @click="clearSearch"
-      >
-        <IconGlyph name="close" :size="13" />
-      </button>
     </div>
   </header>
 </template>
