@@ -10,10 +10,11 @@ import { chromium } from "playwright-core";
 const BASE = process.env.MOCK_BASE ?? "http://localhost:5174";
 
 function findChrome() {
+  if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
   const cacheRoot = join(process.env.HOME ?? "/root", ".cache", "ms-playwright");
   for (const entry of readdirSync(cacheRoot)) {
     if (!entry.startsWith("chromium-")) continue;
-    for (const arch of ["chrome-linux-arm64", "chrome-linux"]) {
+    for (const arch of ["chrome-linux64", "chrome-linux", "chrome-linux-arm64"]) {
       try {
         readdirSync(join(cacheRoot, entry, arch));
         return join(cacheRoot, entry, arch, "chrome");
@@ -57,16 +58,37 @@ await page.keyboard.press("Escape");
 await page.fill("#talaria-search", "Rechnung");
 await page.waitForTimeout(800);
 await page.click('summary[aria-label="Keep this search"]');
+// The details' @toggle handler resets the draft name and focuses the
+// input — wait for that focus so the fill below can't be wiped by the
+// handler landing late (slow CI runners lost this race).
+await page.waitForFunction(
+  () => document.activeElement?.matches('input[aria-label="Name for the saved search"]'),
+  { timeout: 10_000 },
+);
 await page.fill('input[aria-label="Name for the saved search"]', "Demo Rechnungen");
 await page.click('button:has-text("Keep"):visible');
-await page.waitForTimeout(400);
-result.steps.savedListed = await page.isVisible('button:has-text("Demo Rechnungen")');
+let savedShown = true;
+try {
+  await page.waitForSelector('button:has-text("Demo Rechnungen")', { timeout: 15_000 });
+} catch {
+  savedShown = false;
+  // Diagnose: what does the page think happened?
+  result.steps.savedDebug = {
+    toasts: await page.$$eval(".toast", (els) => els.map((e) => e.textContent?.trim().slice(0, 80))),
+    asideText: await page.$eval("aside", (el) => el.textContent?.replace(/\s+/g, " ").slice(0, 300)).catch(() => null),
+    popoverOpen: await page.$eval('details:has(summary[aria-label="Keep this search"])', (el) => el.open).catch(() => null),
+    nameValue: await page.$eval('input[aria-label="Name for the saved search"]', (el) => el.value).catch(() => null),
+    stored: await page.evaluate(() => localStorage.getItem("talaria.searches")),
+  };
+}
+result.steps.savedListed = savedShown;
 await page.reload({ waitUntil: "domcontentloaded" });
 await page.waitForSelector("[role=option]", { timeout: 20_000 });
+await page.waitForSelector('button:has-text("Demo Rechnungen")', { timeout: 15_000 });
 result.steps.savedPersisted = await page.isVisible('button:has-text("Demo Rechnungen")');
 await page.click('button:has-text("Demo Rechnungen")', { button: "right" });
-await page.waitForTimeout(300);
-result.steps.savedRemoved = !(await page.isVisible('button:has-text("Demo Rechnungen")'));
+await page.waitForSelector('button:has-text("Demo Rechnungen")', { state: "detached", timeout: 15_000 });
+result.steps.savedRemoved = true;
 await page.fill("#talaria-search", "");
 await page.waitForTimeout(600);
 

@@ -19,6 +19,7 @@ const publicDir = join(here, "..", "public");
 const cacheRoot = join(process.env.HOME ?? "/root", ".cache", "ms-playwright");
 
 function findChrome() {
+  if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
   for (const entry of readdirSync(cacheRoot)) {
     if (!entry.startsWith("chromium-")) continue;
     for (const arch of ["chrome-linux-arm64", "chrome-linux"]) {
