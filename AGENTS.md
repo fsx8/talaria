@@ -91,9 +91,13 @@ record-sheet reader/composer sheets, per-account hue chips. Contract:
   journal (`getChangesSince`/`waitForNewMail`, MIT, from
   StefanoSalsano/thunderbird-mcp-rag) is the planned upgrade — port it
   addon-side, wrap as SSE in the sidecar, keep the SPA contract.
-- **`forwardMessage mode:"draft"` hangs on IMAP** (commonpost v0.26.1) and
-  then jams TB's compose service — Talaria composes forwards client-side via
-  `saveDraft`; do not call it.
+- **`forwardMessage mode:"draft"` AND `replyToMessage mode:"draft"` hang on
+  IMAP** (commonpost v0.26.1; reply verified live 2026-11-24 on a freshly
+  restarted Thunderbird) and the hang **wedges TB's whole compose service**
+  — even plain `saveDraft` stops answering until TB restarts. Talaria
+  composes reply AND forward drafts client-side via `saveDraft` (quotes in
+  the editor), and the sidecar refuses both tools outright so no path can
+  re-trigger the wedge. Do not call them.
 - **Addon is stateless**: `initialize` does not gate `tools/call`; treat
   `success:true` as "accepted", never durable — read back before trusting
   (IMAP moves settle async under new message ids; drafts APPEND slowly,

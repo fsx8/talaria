@@ -1,12 +1,16 @@
 # Talaria — the unofficial Thunderbird web client (SPA)
 
 Vue 3 + Vite + TypeScript (strict) + Tailwind CSS v4 + **daisyUI 5** + Pinia PWA.
-Phases 2–4 of the build plan (`../tb-webclient-build-plan.md`): the skeleton, the
-mail triage surface, and the breadth pass (threads, contacts, docked agenda, real
-web push), served by the Phase-1 sidecar (`../app`, same-origin — no CORS).
+The mail triage surface and its breadth pass (threads, contacts, docked agenda,
+real web push), served by the sidecar (`../sidecar`, same-origin — no CORS).
 Round 2 (2026-11-23) added the **theme system** (daisyUI semantic tokens, 37
-themes incl. two Talaria identities), a **Settings page** (`/settings`), and the
-**account-label mode** (email address / identity name — email is the default).
+themes incl. two Talaria identities), a **Settings page** (`/settings`), the
+**account-label mode**, and the performance work (bootstrap endpoint, TTL cache,
+localStorage snapshot). Round 3 (2026-11-24) added the **write tiers**: W1
+organize (read/flag/move/batch/folder-create), W2 **drafts composer** (rich
+text, recipient chips, autosave, discard-to-Trash — no send), plus keyboard
+navigation, saved searches, `.eml` export, attachment download, print styles,
+and the remote-image consent gate.
 
 **License: MPL-2.0** (see `LICENSE`). Clean-room: no code from Bulwark, plMail or
 MailFlow (all AGPL) — interface patterns only. daisyUI is MIT.
@@ -21,23 +25,34 @@ src/
     real-backend.ts        tbweb sidecar: POST /api/tools/call + SSE /events + /push/*
     mock-backend.ts        seeded demo register (3 accounts, ~75 messages, threads,
                            contacts, calendars, tasks)
+    mime.ts                client-side MIME extraction for .eml export +
+                           attachment download (RFC 2047, base64/QP decode)
     index.ts               factory — VITE_BACKEND=mock|real
   theming.ts    theme registry: the two Talaria identities + all daisyUI built-ins,
                 grouped (Talaria / Light / Dark / Colorful) with color-scheme metadata
-  stores/       Pinia: settings (theme, account-label mode, density — localStorage),
-                ui (views + /settings route sync), accounts (rail), mail
-                (list+reader+threads), contacts, agenda (7-day events + open tasks)
-  components/   TopBar (+ ThemeMenu dropdown, gear), SidebarPane (+ docked agenda
-                widget), MessageListPane, MessageRow, ReaderPane (+ ThreadSection),
-                ContactsView, AgendaView, AgendaWidget, PushControl, PhoneNav,
-                ThemePicker + SettingsView (Appearance / About & status), IconGlyph
+  stores/       Pinia: settings (theme, labels, density, privacy — localStorage),
+                boot (localStorage snapshot for instant repeat-visit paint),
+                ui (views + /settings route sync), accounts (rail, visibility),
+                mail (list+reader+threads+organize), compose (draft tiers),
+                contacts, searches (client-side saved searches),
+                agenda (7-day events + open tasks), toast (marginalia)
+  components/   TopBar (+ ThemeMenu, compose, search + SaveSearchControl, folio,
+                PushControl, gear), SidebarPane (+ docked agenda widget, saved
+                searches), MessageListPane (virtualized, batch bar), MessageRow,
+                ReaderPane (+ ThreadSection, MoveMenu, export/print/consent),
+                ComposerSheet (+ RecipientField), ContactsView, AgendaView,
+                AgendaWidget, SettingsView (+ ThemePicker), ShortcutsHelp,
+                PhoneNav, ToastOutlet, IconGlyph
   composables/  format.ts (names, dates, sizes)
   style.css     daisyUI plugin + talaria-light/talaria-dark theme definitions,
                 app tokens mapped onto semantic vars, shell layout, prose rules
+                (see ../DESIGN.md for the contract)
 public/         PWA assets + push-sw.js (SW push/notificationclick handlers,
                 importScripts'd by the generated workbox sw.js)
-scripts/        make-icons.mjs (PWA icons), screenshot.mjs, phase4-check.mjs,
-                settings-check.mjs (Round-2 functional + visual proof)
+scripts/        regression harnesses (Playwright): real-check, w1-check,
+                stage2-check, stage3-check, settings-check, phase4-check (each
+                with a *-mock-check.mjs offline twin where applicable),
+                screenshot.mjs, make-icons.mjs
 ```
 
 ## Theming (Round 2)
@@ -65,8 +80,13 @@ scripts/        make-icons.mjs (PWA icons), screenshot.mjs, phase4-check.mjs,
 
 - **Appearance**: theme picker (live swatches render each theme's real tokens
   via nested `data-theme` scopes), account-label mode, list density.
+- **Actions**: mark-as-read-on-open, organize controls, drafts composer
+  visibility (the posture chip states the active tier).
+- **Search**: result scope (all mail / current account / current folder).
+- **Privacy**: remote-image defaults (always load / never ask).
+- **Accounts**: per-account visibility (the rail never goes blank).
 - **About & status**: app version, sidecar/commonpost health (name, version,
-  port), SSE/poll cadence, uptime, the read-only notice.
+  port), SSE/poll cadence, uptime, the posture notice.
 - Routed through history API (`pushState` + `popstate`) — the sidecar's SPA
   fallback serves `/settings` directly; no router dependency.
 
@@ -76,7 +96,7 @@ scripts/        make-icons.mjs (PWA icons), screenshot.mjs, phase4-check.mjs,
 npm install
 npm run dev        # mock backend; proxies /api,/events → http://thunderbird:8942
                    #   (override the proxy target with TBWEB_ORIGIN=http://host:port)
-npm run build      # vue-tsc --noEmit && vite build → ../app/public (deployed in place)
+npm run build      # vue-tsc --noEmit && vite build → ../sidecar/public (deployed in place)
 npm run icons      # regenerate the PWA PNGs from the authored mark
 npm run shots      # Playwright screenshots (dev server must be running)
 ```
@@ -102,12 +122,18 @@ npm run shots      # Playwright screenshots (dev server must be running)
   reply/forward tools. The posture chip in the top bar states the active tier.
 - Forward drafts are composed **client-side** (quoted original from the reader's
   sanitized body; attachments are not copied — Thunderbird does that on send).
-  The add-on's native `forwardMessage mode:"draft"` hangs on IMAP in this
-  environment (observed 2026-11-24; the seam keeps `forwardDraft` for when the
-  add-on fixes it upstream).
-- Attachment downloads stay in Thunderbird; the reader lists attachments only.
-- Remote images in bodies are stripped (DOMPurify) — no tracking pixels over
-  Access; per-message "Load images" consent plus the Settings → Privacy switches.
+  Reply drafts are client-side too (2026-11-24: the add-on's `replyToMessage
+  mode:"draft"` hangs on IMAP exactly like `forwardMessage`, and the hang
+  wedges the whole compose service — even `saveDraft` — until Thunderbird
+  restarts). The sidecar refuses both tools; the seam keeps `replyDraft`/
+  `forwardDraft` for when the add-on fixes them upstream. Consequence: reply
+  drafts carry the quote in the body but no In-Reply-To/References headers,
+  so mail clients may not auto-thread them to the original.
+- Attachment downloads and `.eml` export are extracted **client-side** from
+  the message's raw source (`api/mime.ts`; ≤25 MB guard) — no third party
+  involved. Deleting mail stays impossible; cleanup happens in Thunderbird.
+- Remote images in bodies are stripped (DOMPurify) — no tracking pixels;
+  per-message "Load images" consent plus the Settings → Privacy switches.
 - Per-row attachment indicators are **cache-derived** (Phase 4): rows show a
   paperclip once a full record for that message passed through a cache
   (opened, preloaded, or thread batch) — unknown rows show nothing.
@@ -116,8 +142,8 @@ npm run shots      # Playwright screenshots (dev server must be running)
   batch). `threadOf` needs the message's own folderPath — details always
   pair with their summary.
 - Web push needs HTTPS (secure context): the production origin behind
-  Cloudflare Access qualifies; on the plain-http compose hostname the bell
+  your authenticating proxy qualifies; on a plain-http hostname the bell
   stays inert and tooltips say why. Subscriptions are stored server-side
-  under `../app/data/` (gitignored; reset on `--force-recreate`).
+  under `../sidecar/data/` (gitignored; reset on `--force-recreate`).
 - Calendar colors are not exposed by the API — agenda chips use a stable
   per-calendar hue from the account palette (legend on the agenda page).

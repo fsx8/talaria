@@ -72,12 +72,15 @@ try {
   await dPage.screenshot({ path: join(outMain, "desktop.png") });
   console.log("wrote", join(outMain, "desktop.png"));
 
-  // review extras: dark theme + search results
-  await dPage.getByRole("button", { name: "Dark theme" }).click();
+  // review extras: dark theme + search results (the theme control is the
+  // "Choose theme" details-dropdown since Round 2 — a summary trigger)
+  await dPage.click('summary[aria-label="Choose theme"]');
+  await dPage.click('button[aria-label="Talaria Night theme"]');
   await dPage.waitForTimeout(400);
   await dPage.screenshot({ path: join(outReview, "desktop-dark.png") });
   console.log("wrote", join(outReview, "desktop-dark.png"));
-  await dPage.getByRole("button", { name: "Light theme" }).click();
+  await dPage.click('summary[aria-label="Choose theme"]');
+  await dPage.click('button[aria-label="Talaria Day theme"]');
   await dPage.getByRole("searchbox", { name: "Search mail" }).fill("from:sander-bauhaus.de");
   await dPage.waitForTimeout(900);
   await dPage.screenshot({ path: join(outReview, "desktop-search.png") });

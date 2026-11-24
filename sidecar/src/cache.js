@@ -61,7 +61,9 @@ const NEVER_CACHE = new Set([
  *  else off via disabledTools (sendMail stays disabled, as do deletions);
  *  this list exists so a successful write can flush the read caches it
  *  invalidates (a move/mark-read/draft-save changes search results and
- *  folder tallies; filter runs change search results). */
+ *  folder tallies; filter runs change search results). replyToMessage and
+ *  forwardMessage are listed for completeness but can never succeed
+ *  through the proxy (blocked upstream-hang guard in index.js). */
 export const WRITE_TOOLS = new Set(['updateMessage', 'createFolder', 'applyFilters', 'saveDraft', 'replyToMessage', 'forwardMessage']);
 
 /** @type {Map<string, {at: number, value: any}>} cache key -> entry */

@@ -145,7 +145,7 @@ let serverInfo = null;
  * @param {Record<string, unknown>|undefined} params
  * @returns {Promise<{status: number, body: any}>}
  */
-async function rpcOnce(port, method, params) {
+async function rpcOnce(port, method, params, timeoutMs = RPC_TIMEOUT_MS) {
   const payload = JSON.stringify({ jsonrpc: '2.0', id: ++rpcSeq, method, params });
   const res = await fetch(`http://127.0.0.1:${port}/`, {
     method: 'POST',
@@ -155,7 +155,7 @@ async function rpcOnce(port, method, params) {
       'x-commonpost-bridge': BRIDGE_HEADER,
     },
     body: payload,
-    signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const body = await res.json().catch(() => null);
   return { status: res.status, body };
@@ -172,7 +172,7 @@ async function rpcOnce(port, method, params) {
  *   | {ok: true, result: any, port: number}
  *   | {ok: false, kind: 'down'|'forbidden'|'rpc', error: any, port?: number}>}
  */
-async function rpc(method, params) {
+async function rpc(method, params, timeoutMs = RPC_TIMEOUT_MS) {
   const order = preferredPort !== null && COMMONPOST_PORTS.includes(preferredPort)
     ? [preferredPort, ...COMMONPOST_PORTS.filter((p) => p !== preferredPort)]
     : [...COMMONPOST_PORTS];
@@ -183,7 +183,7 @@ async function rpc(method, params) {
   for (const port of order) {
     let res;
     try {
-      res = await rpcOnce(port, method, params);
+      res = await rpcOnce(port, method, params, timeoutMs);
     } catch {
       lastFailure = { kind: 'down', error: `no JSON-RPC server on 127.0.0.1:${port}` };
       continue; // ECONNREFUSED / timeout -> next port
@@ -245,7 +245,13 @@ async function probeCommonpost(force = false) {
  * @returns {Promise<any>}
  */
 async function callToolData(name, args) {
-  const r = await rpc('tools/call', { name, arguments: args });
+  // Draft appends on rate-limiting IMAP providers can take a minute+;
+  // giving writes a wider window lets a slow append answer honestly
+  // ("Draft saved") instead of surfacing a misleading 502 while the
+  // append is still in flight. Aborting earlier risks leaving the
+  // addon's compose queue stuck (observed 2026-11-24).
+  const timeoutMs = name === 'saveDraft' || name === 'updateMessage' ? 90_000 : RPC_TIMEOUT_MS;
+  const r = await rpc('tools/call', { name, arguments: args }, timeoutMs);
   if (!r.ok) {
     const err = new Error(r.error?.message ?? String(r.error ?? `${name} failed`));
     /** @type {any} */ (err).kind = r.kind;
@@ -543,6 +549,19 @@ app.post('/api/tools/call', async (req, reply) => {
   const body = /** @type {any} */ (req.body ?? {});
   if (typeof body.name !== 'string' || !body.name) {
     return reply.code(400).send({ ok: false, error: 'body must be JSON {name: string, arguments?: object}' });
+  }
+  // Guard: the addon's quote-carrying compose tools hang deterministically
+  // on IMAP (commonpost v0.26.1) and the hang wedges TB's whole compose
+  // service — even plain saveDraft stops answering until Thunderbird
+  // restarts. The SPA composes reply/forward drafts client-side via
+  // saveDraft; refuse these here so no path can re-trigger the wedge.
+  // Remove this block (and restore the store's replyDraft/forwardDraft
+  // routing) once upstream fixes the compose tools.
+  if (body.name === 'replyToMessage' || body.name === 'forwardMessage') {
+    return reply.code(200).send({
+      ok: false,
+      error: 'Disabled: the add-on\'s compose tools hang on IMAP (upstream bug) and wedge compose for every client. Talaria composes reply/forward drafts client-side instead.',
+    });
   }
   const args = body.arguments ?? {};
   try {

@@ -201,9 +201,14 @@ export interface MailBackend {
    *  (WYSIWYG), true replaces just the typed text and keeps Thunderbird's
    *  cite line, quote and signature (autosave of reply/forward drafts). */
   saveDraft?(fields: DraftFields, draftId?: string, keepQuote?: boolean): Promise<DraftResult>;
-  /** Save a reply to a message as a draft (replyAll widens the recipients). */
+  /** Save a reply to a message as a draft (replyAll widens the recipients).
+   *  DORMANT against the real backend: the addon's replyToMessage
+   *  mode:"draft" hangs on IMAP (like forwardMessage) and wedges the whole
+   *  compose service — the composer saves replies client-side via
+   *  saveDraft instead. Kept for when the addon fixes its compose tools. */
   replyDraft?(target: ComposeTarget, fields: DraftFields, replyAll: boolean): Promise<DraftResult>;
-  /** Save a forward of a message as a draft (original content + attachments added by Thunderbird). */
+  /** Save a forward of a message as a draft (original content + attachments added by Thunderbird).
+   *  DORMANT against the real backend — same upstream hang as replyDraft. */
   forwardDraft?(target: ComposeTarget, fields: DraftFields): Promise<DraftResult>;
   /** Whether the backend actually serves the draft tier (lazy probe, cached by the caller). */
   hasComposeTools?(): Promise<boolean>;

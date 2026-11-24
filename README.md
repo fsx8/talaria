@@ -99,7 +99,11 @@ Environment contract (all sidecar env vars documented in
 - **Drafts composer** — reply / reply-all / forward / new, rich-text
   editing, recipient chips with address-book autocomplete, autosave, and
   discard-to-Trash. Drafts only: **there is no Send button** — sending
-  happens in Thunderbird or on your phone.
+  happens in Thunderbird or on your phone. Reply/forward drafts are
+  composed client-side (the addon's own reply/forward draft tools hang on
+  IMAP — an upstream bug this project refuses to trigger), so their quotes
+  live in the draft body; draft threading headers are not set until the
+  addon fixes those tools.
 - **Search operators** — `from:`, `to:`, `cc:`, `subject:`,
   `participant:@domain`, plus free text; unread/flagged filters, per-account
   or per-folder scope, and client-side saved searches.

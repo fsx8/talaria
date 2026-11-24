@@ -69,6 +69,25 @@ function forwardQuoteHtml(detail: { author: string; date: string; subject: strin
   ].join("\n");
 }
 
+/** The reply quote block: Thunderbird's classic "On <date>, <author> wrote:"
+ *  inline form, built from the READER's sanitized body (same posture as the
+ *  forward quote — no scripts, no remote images). */
+function replyQuoteHtml(detail: { author: string; date: string; subject: string; recipients: string; body: string; bodyTruncated: boolean }): string {
+  const quoted = DOMPurify.sanitize(detail.body, {
+    FORBID_TAGS: ["img", "style", "form", "input", "link", "meta"],
+    FORBID_ATTR: ["style", "srcset"],
+    ALLOWED_URI_REGEXP: /^(?:https?|mailto):/i,
+  }).trim();
+  const capped = quoted.length > FORWARD_QUOTE_MAX ? `${quoted.slice(0, FORWARD_QUOTE_MAX)} …` : quoted;
+  const truncation = detail.bodyTruncated ? `<p>[The full original is longer — it stays in the register.]</p>` : "";
+  return [
+    "<p></p>",
+    `<p>On ${escapeText(detail.date)}, ${escapeText(detail.author)} wrote:</p>`,
+    truncation,
+    `<blockquote><p>${capped}</p></blockquote>`,
+  ].join("\n");
+}
+
 function escapeText(text: string): string {
   return text
     .replaceAll("&", "&amp;")
@@ -84,7 +103,7 @@ export const useComposeStore = defineStore("compose", {
      *  edit path when a draft is opened from the Drafts folder. */
     draftId: null as string | null,
     draftFolderPath: null as string | null,
-    /** Reply/forward: the message being answered (quote lives server-side). */
+    /** Reply/forward: the message being answered (quote composed client-side). */
     target: null as ComposeTarget | null,
     targetSubject: "",
     targetAuthor: "",
@@ -122,11 +141,6 @@ export const useComposeStore = defineStore("compose", {
     /** Entry points also respect the courtesy switch. */
     entryVisible(): boolean {
       return this.available && useSettingsStore().showComposer;
-    },
-    /** Reply/forward first save goes through the dedicated tools; every
-     *  later save of the same draft is a saveDraft rewrite. */
-    isFirstSave(state): boolean {
-      return state.draftId === null;
     },
     title(state): string {
       switch (state.mode) {
@@ -213,6 +227,14 @@ export const useComposeStore = defineStore("compose", {
       this.to = to;
       this.cc = cc;
       this.subject = this.prefixedSubject(detail.subject, "Re");
+      // The reply quote is composed CLIENT-side (same pipeline as the
+      // forward): the add-on's replyToMessage mode:"draft" hangs on IMAP
+      // exactly like its forwardMessage sibling — verified live on a
+      // freshly restarted Thunderbird 2026-11-24, and the hang wedges the
+      // whole compose service (even plain saveDraft) until TB restarts.
+      // Reply drafts therefore store our quote and lose In-Reply-To/
+      // References threading until the add-on fixes the compose tools.
+      this.body = replyQuoteHtml(detail);
       this.open = true;
     },
 
@@ -220,9 +242,10 @@ export const useComposeStore = defineStore("compose", {
      *  the user edits exactly what stores). The addon's forwardMessage
      *  mode:"draft" hangs on IMAP in this environment (verified live: no
      *  draft ever lands, even after minutes — its window-less ForwardInline
-     *  compose never completes its IMAP body stream), so the forward goes
-     *  through the proven saveDraft path instead. Attachments are not
-     *  copied — noted in the sheet. */
+     *  compose never completes its IMAP body stream; replyToMessage hangs
+     *  the same way, see openReply), so the forward goes through the proven
+     *  saveDraft path instead. Attachments are not copied — noted in the
+     *  sheet. */
     openForward() {
       const mail = useMailStore();
       const detail = mail.selectedDetail;
@@ -332,28 +355,15 @@ export const useComposeStore = defineStore("compose", {
       try {
         const fields = this.fields();
         let result;
-        if ((this.mode === "reply" || this.mode === "replyAll") && this.target) {
-          if (this.isFirstSave) {
-            // First save: Thunderbird builds the quote, references, subject
-            // prefix and signature around the body (verified live).
-            result = await backend.replyDraft!(this.target, fields, this.mode === "replyAll");
-            // A user-edited subject must win over the computed one — a
-            // follow-up rewrite carries ONLY the subject; omitted recipient/
-            // body fields are left untouched (addon keeps what the draft has).
-            if (result.messageId && fields.subject && fields.subject !== (result.subject ?? "")) {
-              await backend.saveDraft!({ subject: fields.subject }, result.messageId, true);
-            }
-          } else if (this.draftId) {
-            // Later saves: replace only the typed text, keep the TB quote.
-            result = await backend.saveDraft!(fields, this.draftId, true);
-          } else {
-            // Reply without its original (defensive): plain draft.
-            result = await backend.saveDraft!(fields, undefined, true);
-          }
+        if (this.draftId) {
+          // Draft edit: replace only the typed text, keep the stored quote.
+          result = await backend.saveDraft!(fields, this.draftId, true);
         } else {
-          // new / draft edit / forward: full body replace — the editor holds
-          // everything (the forward's quote is composed client-side).
-          result = await backend.saveDraft!(fields, this.draftId ?? undefined, false);
+          // First save — new, reply, reply-all, forward: full body via the
+          // proven saveDraft path (the editor holds everything: reply and
+          // forward quotes are composed client-side; see openReply for why
+          // the addon's reply/forward compose tools must not be called).
+          result = await backend.saveDraft!(fields, undefined, false);
         }
         if (result.messageId) this.draftId = result.messageId;
         if (result.folderPath) this.draftFolderPath = result.folderPath;
