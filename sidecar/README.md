@@ -1,6 +1,6 @@
 # talaria — the sidecar
 
-A small Node 22 service (Fastify, two dependencies) that sits between the PWA
+A small Node.js service (Fastify, two dependencies) that sits between the PWA
 and Thunderbird: it serves the built SPA, reverse-proxies the commonpost
 add-on's JSON-RPC API, streams live unread events over SSE, and sends web
 push notifications. It is deliberately tiny — stateless proxying plus a
@@ -15,17 +15,17 @@ browser ──HTTPS──▶ authenticating proxy ──▶ sidecar ──HTTP(l
 
 ## Routes
 
-| Route | Purpose |
-| --- | --- |
-| `GET /health` (alias `GET /api/health`) | `{ok, commonpost:{reachable, port, serverInfo}, uptime}` — probes the commonpost add-on with an MCP `initialize` |
-| `POST /api/tools/call` | body `{name, arguments}` → JSON-RPC `tools/call`; answers `{ok:true, data:<parsed>}` or `{ok:false, error}`. Port failover + re-probe on network errors and 403. Tool-level failures (bad args, disabled tool) are valid proxied answers → HTTP 200 `ok:false`; unreachable upstream → HTTP 502 |
-| `POST /api/tools/list` | JSON-RPC `tools/list` passthrough (same envelope) |
-| `GET /events` | SSE: `hello` on connect (current unread), heartbeat comment every 15 s, `event: mail` whenever the unread count changes (60 s polling MVP) |
-| `GET /push/public-key` | `{ok, publicKey}` — the VAPID **public** key for `pushManager.subscribe`, or `publicKey: null` when push is unconfigured |
-| `POST /push/subscribe` | body = a PushSubscription JSON (`{endpoint, keys:{p256dh, auth}}`); stored deduped-by-endpoint in `data/push-subscriptions.json` → `{ok, stored}` |
-| `POST /push/unsubscribe` | body `{endpoint}` — drops the record (browser unsubscribes itself first) |
-| `POST /push/test` | sends `{unread, ts, test:true}` to every stored subscription, prunes 404/410 → `{ok, sent, pruned, failed}` |
-| `GET /*` | static files from `public/` (the SPA build), extension-less paths fall back to `index.html` |
+| Route                                   | Purpose                                                                                                                                                                                                                                                                                         |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health` (alias `GET /api/health`) | `{ok, commonpost:{reachable, port, serverInfo}, uptime}` — probes the commonpost add-on with an MCP `initialize`                                                                                                                                                                                |
+| `POST /api/tools/call`                  | body `{name, arguments}` → JSON-RPC `tools/call`; answers `{ok:true, data:<parsed>}` or `{ok:false, error}`. Port failover + re-probe on network errors and 403. Tool-level failures (bad args, disabled tool) are valid proxied answers → HTTP 200 `ok:false`; unreachable upstream → HTTP 502 |
+| `POST /api/tools/list`                  | JSON-RPC `tools/list` passthrough (same envelope)                                                                                                                                                                                                                                               |
+| `GET /events`                           | SSE: `hello` on connect (current unread), heartbeat comment every 15 s, `event: mail` whenever the unread count changes (60 s polling MVP)                                                                                                                                                      |
+| `GET /push/public-key`                  | `{ok, publicKey}` — the VAPID **public** key for `pushManager.subscribe`, or `publicKey: null` when push is unconfigured                                                                                                                                                                        |
+| `POST /push/subscribe`                  | body = a PushSubscription JSON (`{endpoint, keys:{p256dh, auth}}`); stored deduped-by-endpoint in `data/push-subscriptions.json` → `{ok, stored}`                                                                                                                                               |
+| `POST /push/unsubscribe`                | body `{endpoint}` — drops the record (browser unsubscribes itself first)                                                                                                                                                                                                                        |
+| `POST /push/test`                       | sends `{unread, ts, test:true}` to every stored subscription, prunes 404/410 → `{ok, sent, pruned, failed}`                                                                                                                                                                                     |
+| `GET /*`                                | static files from `public/` (the SPA build), extension-less paths fall back to `index.html`                                                                                                                                                                                                     |
 
 ## Web push
 
@@ -69,26 +69,45 @@ SPA-falls-back for `/api/*` or `/push/*`.
 
 ## Environment
 
-| Var | Default | Meaning |
-| --- | --- | --- |
-| `PORT` | `8942` | listen port |
-| `HOST` | `0.0.0.0` | listen host |
-| `COMMONPOST_MCP_TOKEN` | — | **required**; Bearer token for the add-on |
-| `COMMONPOST_PORTS` | `8780-8789` | probe/failover range |
-| `TALARIA_BRIDGE_HEADER` | `0.20.0; packaging=file` | bridge-version header value |
-| `TALARIA_MCP_PROTOCOL` | `2025-06-18` | MCP protocolVersion offered |
-| `SSE_HEARTBEAT_MS` / `SSE_POLL_MS` | `15000` / `60000` | SSE timers |
-| `TALARIA_POLL_CALL` | unread probe above | full `{name, arguments}` override |
-| `TALARIA_PUBLIC_DIR` | `./public` | static root (point at a bind-mounted SPA build to deploy by rebuild) |
-| `TALARIA_VAPID_PUBLIC_KEY` / `TALARIA_VAPID_PRIVATE_KEY` | — (push disabled without them) | VAPID identity for web-push |
-| `TALARIA_PUSH_SUBJECT` | `mailto:admin@example.com` | contact string carried in VAPID claims |
-| `TALARIA_PUSH_DB` | `<app dir>/data/push-subscriptions.json` | subscription store (gitignored) |
-| `HEALTH_CACHE_MS`, `RPC_TIMEOUT_MS`, `BODY_LIMIT`, `LOG_LEVEL` | `5000`, `20000`, `8 MiB`, `info` | tuning |
+| Var                                                            | Default                                  | Meaning                                                              |
+| -------------------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------- |
+| `PORT`                                                         | `8942`                                   | listen port                                                          |
+| `HOST`                                                         | `0.0.0.0`                                | listen host                                                          |
+| `COMMONPOST_MCP_TOKEN`                                         | —                                        | **required**; Bearer token for the add-on                            |
+| `COMMONPOST_PORTS`                                             | `8780-8789`                              | probe/failover range                                                 |
+| `TALARIA_BRIDGE_HEADER`                                        | `0.20.0; packaging=file`                 | bridge-version header value                                          |
+| `TALARIA_MCP_PROTOCOL`                                         | `2025-06-18`                             | MCP protocolVersion offered                                          |
+| `SSE_HEARTBEAT_MS` / `SSE_POLL_MS`                             | `15000` / `60000`                        | SSE timers                                                           |
+| `TALARIA_POLL_CALL`                                            | unread probe above                       | full `{name, arguments}` override                                    |
+| `TALARIA_PUBLIC_DIR`                                           | `./public`                               | static root (point at a bind-mounted SPA build to deploy by rebuild) |
+| `TALARIA_VAPID_PUBLIC_KEY` / `TALARIA_VAPID_PRIVATE_KEY`       | — (push disabled without them)           | VAPID identity for web-push                                          |
+| `TALARIA_PUSH_SUBJECT`                                         | `mailto:admin@example.com`               | contact string carried in VAPID claims                               |
+| `TALARIA_PUSH_DB`                                              | `<app dir>/data/push-subscriptions.json` | subscription store (gitignored)                                      |
+| `HEALTH_CACHE_MS`, `RPC_TIMEOUT_MS`, `BODY_LIMIT`, `LOG_LEVEL` | `5000`, `20000`, `8 MiB`, `info`         | tuning                                                               |
+
+## Development
+
+Dependencies are managed with **pnpm** (the version is pinned in
+`package.json`'s `packageManager` field — pnpm self-switches to it; Node 25+
+ships no corepack, so install pnpm itself with `npm i -g pnpm` or your
+package manager of choice). Formatting and linting run through
+[Vite+](https://viteplus.dev) — Oxfmt + Oxlint, configured in
+`vite.config.ts`:
+
+```sh
+pnpm install            # or pnpm install --frozen-lockfile
+pnpm check              # format + lint in one pass (the CI gate)
+pnpm fmt                # format in place
+pnpm lint:fix           # apply lint autofixes
+```
+
+`src/` is plain Node JavaScript with JSDoc types — there is no build step
+and no tsconfig, so the type-aware lint layer stays off.
 
 ## Run
 
 ```sh
-COMMONPOST_MCP_TOKEN=… npm start          # http://0.0.0.0:8942, serves public/
+COMMONPOST_MCP_TOKEN=… pnpm start         # http://0.0.0.0:8942, serves public/
 ```
 
 See `compose.example.yaml` for a container-ready example, and the repository

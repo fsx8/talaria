@@ -53,7 +53,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import * as push from './push.js';
-import { cacheSnapshot, cachedCallMeta, flushAfterWrite, flushTool, isCacheable, WRITE_TOOLS } from './cache.js';
+import { cacheSnapshot, cachedCallMeta, flushAfterWrite, flushTool, WRITE_TOOLS } from './cache.js';
 
 /* ------------------------------------------------------------------ */
 /* Configuration                                                       */
@@ -151,7 +151,7 @@ async function rpcOnce(port, method, params, timeoutMs = RPC_TIMEOUT_MS) {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'authorization': `Bearer ${TOKEN}`,
+      authorization: `Bearer ${TOKEN}`,
       'x-commonpost-bridge': BRIDGE_HEADER,
     },
     body: payload,
@@ -173,9 +173,10 @@ async function rpcOnce(port, method, params, timeoutMs = RPC_TIMEOUT_MS) {
  *   | {ok: false, kind: 'down'|'forbidden'|'rpc', error: any, port?: number}>}
  */
 async function rpc(method, params, timeoutMs = RPC_TIMEOUT_MS) {
-  const order = preferredPort !== null && COMMONPOST_PORTS.includes(preferredPort)
-    ? [preferredPort, ...COMMONPOST_PORTS.filter((p) => p !== preferredPort)]
-    : [...COMMONPOST_PORTS];
+  const order =
+    preferredPort !== null && COMMONPOST_PORTS.includes(preferredPort)
+      ? [preferredPort, ...COMMONPOST_PORTS.filter((p) => p !== preferredPort)]
+      : [...COMMONPOST_PORTS];
 
   /** @type {{kind:'down'|'forbidden', error:any}|null} */
   let lastFailure = null;
@@ -202,7 +203,11 @@ async function rpc(method, params, timeoutMs = RPC_TIMEOUT_MS) {
     }
     return { ok: true, result: res.body.result, port };
   }
-  return { ok: false, kind: lastFailure?.kind ?? 'down', error: lastFailure?.error ?? 'commonpost unreachable' };
+  return {
+    ok: false,
+    kind: lastFailure?.kind ?? 'down',
+    error: lastFailure?.error ?? 'commonpost unreachable',
+  };
 }
 
 /**
@@ -259,7 +264,9 @@ async function callToolData(name, args) {
   }
   const parsed = parseToolResult(r.result);
   if (!parsed.ok) {
-    const err = new Error(JSON.stringify(parsed.error)?.slice(0, 300) ?? `${name} returned an unusable payload`);
+    const err = new Error(
+      JSON.stringify(parsed.error)?.slice(0, 300) ?? `${name} returned an unusable payload`,
+    );
     /** @type {any} */ (err).kind = 'rpc'; // tool-level: keep the 200 ok:false envelope
     throw err;
   }
@@ -280,11 +287,20 @@ function recentQueryArgs() {
     query: '',
     maxResults: 50,
     offset: 0,
-    fields: ['date', 'author', 'recipients', 'ccList', 'subject', 'read', 'flagged', 'tags', 'preview'],
+    fields: [
+      'date',
+      'author',
+      'recipients',
+      'ccList',
+      'subject',
+      'read',
+      'flagged',
+      'tags',
+      'preview',
+    ],
     startDate: new Date(Math.floor((Date.now() - 14 * 86400000) / 3600000) * 3600000).toISOString(),
   };
 }
-
 
 /**
  * Extract the payload from a JSON-RPC result. tools/call results are
@@ -313,7 +329,9 @@ function parseToolResult(result) {
   if (typeof result === 'string') {
     try {
       return { ok: true, data: JSON.parse(result) };
-    } catch {/* fall through */}
+    } catch {
+      /* fall through */
+    }
   }
   return { ok: false, error: `unexpected result shape: ${JSON.stringify(result)?.slice(0, 200)}` };
 }
@@ -404,13 +422,23 @@ async function pollUnread() {
     // detect a change).
     const r = await rpc('tools/call', { name: POLL_CALL.name, arguments: POLL_CALL.arguments });
     if (!r.ok) {
-      throw new Error(r.kind === 'rpc' ? String(r.error?.message ?? r.error) : `commonpost unreachable (${String(r.error?.message ?? r.error)})`);
+      throw new Error(
+        r.kind === 'rpc'
+          ? String(r.error?.message ?? r.error)
+          : `commonpost unreachable (${String(r.error?.message ?? r.error)})`,
+      );
     }
     const parsed = parseToolResult(r.result);
     if (!parsed.ok) throw new Error(JSON.stringify(parsed.error));
     const d = parsed.data;
-    const count = typeof d?.count === 'number' ? d.count : typeof d?.totalMatches === 'number' ? d.totalMatches : null;
-    if (count === null) throw new Error(`unexpected poll payload: ${JSON.stringify(d).slice(0, 200)}`);
+    const count =
+      typeof d?.count === 'number'
+        ? d.count
+        : typeof d?.totalMatches === 'number'
+          ? d.totalMatches
+          : null;
+    if (count === null)
+      throw new Error(`unexpected poll payload: ${JSON.stringify(d).slice(0, 200)}`);
     lastPollError = null;
     if (lastUnread === null) {
       lastUnread = count; // baseline, no event
@@ -441,7 +469,9 @@ function prewarmBootstrap() {
   const recentArgs = recentQueryArgs();
   void cachedCallMeta('listAccounts', {}, () => callToolData('listAccounts', {})).catch(() => {});
   void cachedCallMeta('listFolders', {}, () => callToolData('listFolders', {})).catch(() => {});
-  void cachedCallMeta('searchMessages', recentArgs, () => callToolData('searchMessages', recentArgs)).catch(() => {});
+  void cachedCallMeta('searchMessages', recentArgs, () =>
+    callToolData('searchMessages', recentArgs),
+  ).catch(() => {});
 }
 
 /* ------------------------------------------------------------------ */
@@ -548,7 +578,9 @@ app.get('/api/health', async () => {
 app.post('/api/tools/call', async (req, reply) => {
   const body = /** @type {any} */ (req.body ?? {});
   if (typeof body.name !== 'string' || !body.name) {
-    return reply.code(400).send({ ok: false, error: 'body must be JSON {name: string, arguments?: object}' });
+    return reply
+      .code(400)
+      .send({ ok: false, error: 'body must be JSON {name: string, arguments?: object}' });
   }
   // Guard: the addon's quote-carrying compose tools hang deterministically
   // on IMAP (commonpost v0.26.1) and the hang wedges TB's whole compose
@@ -560,7 +592,8 @@ app.post('/api/tools/call', async (req, reply) => {
   if (body.name === 'replyToMessage' || body.name === 'forwardMessage') {
     return reply.code(200).send({
       ok: false,
-      error: 'Disabled: the add-on\'s compose tools hang on IMAP (upstream bug) and wedge compose for every client. Talaria composes reply/forward drafts client-side instead.',
+      error:
+        "Disabled: the add-on's compose tools hang on IMAP (upstream bug) and wedge compose for every client. Talaria composes reply/forward drafts client-side instead.",
     });
   }
   const args = body.arguments ?? {};
@@ -585,7 +618,10 @@ app.post('/api/tools/call', async (req, reply) => {
 
 app.post('/api/tools/list', async (req, reply) => {
   const r = await rpc('tools/list', {});
-  if (!r.ok) return reply.code(r.kind === 'rpc' ? 200 : 502).send({ ok: false, error: r.error?.message ?? r.error });
+  if (!r.ok)
+    return reply
+      .code(r.kind === 'rpc' ? 200 : 502)
+      .send({ ok: false, error: r.error?.message ?? r.error });
   const parsed = parseToolResult(r.result);
   if (!parsed.ok) return reply.send({ ok: false, error: parsed.error });
   return reply.send({ ok: true, data: parsed.data });
@@ -602,7 +638,9 @@ app.get('/api/bootstrap', async (req, reply) => {
     const [accounts, folders, recent] = await Promise.all([
       cachedCallMeta('listAccounts', {}, () => callToolData('listAccounts', {})),
       cachedCallMeta('listFolders', {}, () => callToolData('listFolders', {})),
-      cachedCallMeta('searchMessages', recentArgs, () => callToolData('searchMessages', recentArgs)),
+      cachedCallMeta('searchMessages', recentArgs, () =>
+        callToolData('searchMessages', recentArgs),
+      ),
     ]);
     const oldest = Math.min(accounts.at, folders.at, recent.at);
     return {
@@ -654,7 +692,9 @@ app.get('/push/public-key', async () => {
 
 app.post('/push/subscribe', async (req, reply) => {
   const result = push.addSubscription(req.body);
-  return reply.code(result.ok ? 200 : 400).send(result.ok ? { ok: true, stored: push.subscriptionCount() } : result);
+  return reply
+    .code(result.ok ? 200 : 400)
+    .send(result.ok ? { ok: true, stored: push.subscriptionCount() } : result);
 });
 
 app.post('/push/unsubscribe', async (req, reply) => {
@@ -664,7 +704,11 @@ app.post('/push/unsubscribe', async (req, reply) => {
 });
 
 app.post('/push/test', async (req, reply) => {
-  const result = await push.notifyAll({ unread: lastUnread, ts: new Date().toISOString(), test: true });
+  const result = await push.notifyAll({
+    unread: lastUnread,
+    ts: new Date().toISOString(),
+    test: true,
+  });
   return reply.send({ ok: true, ...result });
 });
 

@@ -64,7 +64,8 @@ function collectParts(headers: Map<string, string>, body: string, out: RawPart[]
     return;
   }
   // Split on the boundary lines; the preamble and epilogue fall away.
-  const segments = body.split(new RegExp(`^--${escapeRegExp(boundary)}(?:--)?[ \\t]*\\r?\\n`, "m"));
+  // The closing delimiter may be the body's last line (no trailing newline).
+  const segments = body.split(new RegExp(`^--${escapeRegExp(boundary)}(?:--)?[ \\t]*(?:\\r?\\n|$)`, "m"));
   for (const segment of segments) {
     if (!segment || /^\s*$/.test(segment)) continue;
     const sep = segment.search(/\r?\n\r?\n/);
@@ -81,6 +82,10 @@ function escapeRegExp(text: string): string {
 
 /** Parse a full RFC 2822 message into its flat leaf-part list. */
 export function parseMimeParts(raw: string): RawPart[] {
+  // IMAP sources are CRLF; normalize once so boundary lines split cleanly
+  // on every platform (a stray \r otherwise leaks into leaf bodies and
+  // corrupts base64 decoding).
+  raw = raw.replace(/\r\n/g, "\n");
   const sep = raw.search(/\r?\n\r?\n/);
   if (sep < 0) return [];
   const headers = parseHeaders(raw.slice(0, sep));

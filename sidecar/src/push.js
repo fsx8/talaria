@@ -27,10 +27,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import webpush from 'web-push';
+import { sendNotification, setVapidDetails } from 'web-push';
 
 const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DB_PATH = process.env.TALARIA_PUSH_DB ?? path.join(APP_ROOT, 'data', 'push-subscriptions.json');
+const DB_PATH =
+  process.env.TALARIA_PUSH_DB ?? path.join(APP_ROOT, 'data', 'push-subscriptions.json');
 const PUBLIC_KEY = process.env.TALARIA_VAPID_PUBLIC_KEY ?? '';
 const PRIVATE_KEY = process.env.TALARIA_VAPID_PRIVATE_KEY ?? '';
 /** Contact string push services attach to the VAPID claims. */
@@ -42,7 +43,7 @@ let configured = false;
 export function initPush() {
   if (PUBLIC_KEY && PRIVATE_KEY) {
     try {
-      webpush.setVapidDetails(SUBJECT, PUBLIC_KEY, PRIVATE_KEY);
+      setVapidDetails(SUBJECT, PUBLIC_KEY, PRIVATE_KEY);
       configured = true;
       console.log('[talaria] web-push configured (VAPID key present)');
     } catch (err) {
@@ -108,7 +109,10 @@ function validSubscription(sub) {
 export function addSubscription(body) {
   if (!configured) return { ok: false, error: 'web-push is not configured on this sidecar' };
   if (!validSubscription(body)) {
-    return { ok: false, error: 'body must be a PushSubscription JSON: {endpoint, keys:{p256dh, auth}}' };
+    return {
+      ok: false,
+      error: 'body must be a PushSubscription JSON: {endpoint, keys:{p256dh, auth}}',
+    };
   }
   const list = loadSubscriptions().filter((s) => s.endpoint !== body.endpoint);
   list.push({
@@ -159,7 +163,7 @@ export async function notifyAll(payload) {
   await Promise.allSettled(
     list.map(async (sub) => {
       try {
-        await webpush.sendNotification(sub, body, { TTL: 3600 });
+        await sendNotification(sub, body, { TTL: 3600 });
         sent += 1;
       } catch (err) {
         const statusCode = err?.statusCode ?? err?.cause?.statusCode;

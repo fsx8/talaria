@@ -34,13 +34,17 @@ leave Thunderbird.
 
 ## Verification discipline (every change)
 
-`npx vue-tsc --noEmit` → `vite build` → deploy → real-mode checks against
-your sidecar (accounts render, list + reader work) → regression harnesses in
-`spa/scripts/`:
+`pnpm exec vue-tsc --noEmit` → `pnpm run build` (in spa/) → deploy →
+real-mode checks against your sidecar (accounts render, list + reader
+work) → regression harnesses in `spa/scripts/`:
 
 - **Mock (offline, authored demo data, `VITE_BACKEND=mock`, dev server on
-  :5173 / :5174):** `settings-check.mjs`, `stage2-mock-check.mjs`,
-  `w1-mock-check.mjs`, `stage3-mock-check.mjs`, `phase4-check.mjs MODE=mock`.
+  :5173 / :5174):** `stage2-mock-check.mjs`, `w1-mock-check.mjs`,
+  `stage3-mock-check.mjs`, `phase4-check.mjs MODE=mock`. These run **in
+  CI** on every push inside the official Playwright image (no install
+  step — the bare `npx playwright install --with-deps` stalled twice on
+  the runner), and locally while iterating. `settings-check.mjs` needs a
+  production build + a reachable sidecar.
 - **Real (against the live sidecar):** `real-check.mjs` (read-only smoke),
   `settings-check.mjs`, `w1-check.mjs`, `stage2-check.mjs`,
   `stage3-check.mjs` (writes drafts — slow on rate-limiting providers),
@@ -49,6 +53,20 @@ your sidecar (accounts render, list + reader work) → regression harnesses in
 Playwright screenshots go to `docs/screenshots/<phase>/` — **never commit
 `real-*` screenshots or anything showing your real mailbox** (gitignored,
 kept that way). Mock-mode shots are the only publishable ones.
+
+Sidecar tooling (since 2026-11-24): **both `spa/` and `sidecar/` use
+pnpm**, not npm — the version is pinned in each `packageManager`, and
+`spa/pnpm-lock.yaml` + `sidecar/pnpm-lock.yaml` (plus the sidecar's
+`pnpm-workspace.yaml`) are the lockfiles (no `package-lock.json`).
+Formatting + linting is Vite+ (`vp`, config in `sidecar/vite.config.ts`):
+`pnpm check` in the sidecar is the gate (Oxfmt + Oxlint; type-aware
+linting stays off — plain JS with JSDoc, no tsconfig). Docker + CI
+install pnpm directly (node:26 images ship no corepack). Dependency
+bumps go to the newest versions that actually work as a set — as of
+2026-11-24: TS 6.0.3 (not 7: vue-tsc 3.3 cannot drive the native TS7
+package), vite 8, pinia 4, web-push 4 (ESM — named imports only),
+playwright-core 1.65.1 (CI image pinned to the matching
+v1.65.1-noble).
 
 ## Security posture — do not weaken
 

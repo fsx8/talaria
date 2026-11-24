@@ -15,18 +15,24 @@
 # persist in /app/data — mount a volume there.
 
 # ---- build: SPA + sidecar prod deps (native platform, never emulated) ----
-FROM --platform=$BUILDPLATFORM node:22-bookworm AS build
+FROM --platform=$BUILDPLATFORM node:26-slim AS build
 WORKDIR /app
-COPY spa/package.json spa/package-lock.json spa/
-RUN cd spa && npm ci --no-fund --no-audit
+# Both packages are pnpm-managed (version pinned by each packageManager
+# field). Node 26 ships no corepack, so pnpm is installed directly.
+RUN npm install -g --no-fund --no-audit pnpm@12.23.0
+COPY spa/package.json spa/pnpm-lock.yaml spa/
+RUN cd spa && pnpm install --frozen-lockfile
 COPY spa/ spa/
-# npm run build = vue-tsc --noEmit && vite build → ../sidecar/public
-RUN cd spa && npm run build
-COPY sidecar/package.json sidecar/package-lock.json sidecar/
-RUN cd sidecar && npm ci --omit=dev --no-fund --no-audit
+# pnpm run build = vue-tsc --noEmit && vite build → ../sidecar/public
+RUN cd spa && pnpm run build
+# --prod keeps vite-plus (dev-only tooling) out of the image; pnpm's
+# symlinked node_modules layout is fully relative, so the plain COPY into
+# the runtime stage preserves it.
+COPY sidecar/package.json sidecar/pnpm-lock.yaml sidecar/pnpm-workspace.yaml sidecar/
+RUN cd sidecar && pnpm install --frozen-lockfile --prod
 
 # ---- runtime: per-arch, no RUN steps (nothing to emulate) ----
-FROM node:22-bookworm-slim
+FROM node:26-slim
 WORKDIR /app
 ENV NODE_ENV=production \
     TALARIA_PUBLIC_DIR=/app/public

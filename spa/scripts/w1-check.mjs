@@ -11,7 +11,7 @@ const SHOTS = "../docs/local/screenshots/round3";
 
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
-  const cacheRoot = join(process.env.HOME ?? "/root", ".cache", "ms-playwright");
+  const cacheRoot = process.env.PLAYWRIGHT_BROWSERS_PATH ?? join(process.env.HOME ?? "/root", ".cache", "ms-playwright");
   for (const entry of readdirSync(cacheRoot)) {
     if (!entry.startsWith("chromium-")) continue;
     for (const arch of ["chrome-linux64", "chrome-linux", "chrome-linux-arm64"]) {

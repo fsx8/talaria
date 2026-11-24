@@ -35,7 +35,8 @@ seam the real sidecar implements. `VITE_BACKEND=mock` is the dev default:
 
 ```sh
 cd spa
-npx vite --port 5173        # mock dev server; hot reload on save
+pnpm install --frozen-lockfile
+pnpm exec vite --port 5173   # mock dev server; hot reload on save
 ```
 
 Extending test data is just editing the seed corpus in
@@ -56,19 +57,19 @@ real names. Keep it that way.
 
 ## Verification discipline (every change)
 
-```sh
-cd spa
-npx vue-tsc --noEmit   # typecheck
-npm run build          # build (writes into sidecar/public/)
-```
+**CI on every push/PR runs everything**: `vue-tsc`, the vitest unit suite
+(`spa/tests/`), the production build, sidecar checks, and the full
+Playwright regression harnesses (inside the official Playwright image —
+browsers baked in, no install step). If CI is green, the change is
+verified.
 
-Then run the regression harnesses relevant to your change (Playwright,
-`spa/scripts/*.mjs`) — mock-mode ones run offline against the authored demo
+For iterating locally, the same harnesses run offline against the mock
 backend:
 
 ```sh
-npx vite --port 5173 &          # mock dev server (VITE_BACKEND=mock)
-node scripts/settings-check.mjs
+cd spa
+pnpm install --frozen-lockfile
+pnpm exec vite --port 5173 &     # mock dev server (VITE_BACKEND=mock)
 node scripts/stage2-mock-check.mjs   # needs a second server on :5174
 node scripts/w1-mock-check.mjs
 node scripts/stage3-mock-check.mjs

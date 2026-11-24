@@ -1,19 +1,28 @@
 {
   "name": "talaria",
   "version": "0.3.0",
+  "private": true,
   "description": "Talaria — the unofficial Thunderbird web client sidecar: reverse-proxies the commonpost JSON-RPC addon API, hosts the built SPA, serves SSE live events and VAPID web push.",
+  "license": "MPL-2.0",
   "type": "module",
   "main": "src/index.js",
-  "private": true,
-  "license": "MPL-2.0",
-  "engines": {
-    "node": ">=22"
-  },
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix",
+    "fmt": "vp fmt --write",
+    "fmt:check": "vp fmt --check",
+    "check": "vp check"
   },
   "dependencies": {
     "fastify": "^5.12.8",
-    "web-push": "^3.6.7"
-  }
+    "web-push": "^4.0.0"
+  },
+  "devDependencies": {
+    "vite-plus": "^1.8.0"
+  },
+  "engines": {
+    "node": ">=26"
+  },
+  "packageManager": "pnpm@12.23.0"
 }

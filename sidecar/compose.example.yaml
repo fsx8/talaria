@@ -11,20 +11,20 @@
 #
 services:
   thunderbird:
-    image: your-thunderbird-image            # commonpost addon installed + configured
+    image: your-thunderbird-image # commonpost addon installed + configured
     # ... your Thunderbird container's own configuration ...
 
   talaria:
-    image: ghcr.io/fsx8/talaria:latest       # or pin a version tag
+    image: ghcr.io/fsx8/talaria:latest # or pin a version tag
     depends_on:
       - thunderbird
-    network_mode: "service:thunderbird"      # share TB's netns: addon = loopback :8780
+    network_mode: 'service:thunderbird' # share TB's netns: addon = loopback :8780
     environment:
       COMMONPOST_MCP_TOKEN: ${COMMONPOST_MCP_TOKEN:?set in .env}
       TALARIA_VAPID_PUBLIC_KEY: ${TALARIA_VAPID_PUBLIC_KEY:-}
       TALARIA_VAPID_PRIVATE_KEY: ${TALARIA_VAPID_PRIVATE_KEY:-}
-      PORT: "8942"
-      COMMONPOST_PORTS: "8780-8789"
+      PORT: '8942'
+      COMMONPOST_PORTS: '8780-8789'
     volumes:
       # Push subscriptions survive container replacement.
       - talaria-data:/app/data
@@ -33,7 +33,7 @@ services:
     # interface or reach it through your authenticating reverse proxy —
     # never bind it publicly without a gate in front.
     ports:
-      - "127.0.0.1:8942:8942"
+      - '127.0.0.1:8942:8942'
 
 volumes:
   talaria-data:

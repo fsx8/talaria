@@ -64,7 +64,14 @@ const NEVER_CACHE = new Set([
  *  folder tallies; filter runs change search results). replyToMessage and
  *  forwardMessage are listed for completeness but can never succeed
  *  through the proxy (blocked upstream-hang guard in index.js). */
-export const WRITE_TOOLS = new Set(['updateMessage', 'createFolder', 'applyFilters', 'saveDraft', 'replyToMessage', 'forwardMessage']);
+export const WRITE_TOOLS = new Set([
+  'updateMessage',
+  'createFolder',
+  'applyFilters',
+  'saveDraft',
+  'replyToMessage',
+  'forwardMessage',
+]);
 
 /** @type {Map<string, {at: number, value: any}>} cache key -> entry */
 const store = new Map();

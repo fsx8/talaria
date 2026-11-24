@@ -11,62 +11,84 @@ concurrency:
 
 jobs:
   spa:
-    name: typecheck + build (spa)
+    name: typecheck + tests + build (spa)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Version comes from spa/package.json's packageManager field.
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: spa/package.json
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: spa/package-lock.json
+          node-version: 26
+          cache: pnpm
+          cache-dependency-path: spa/pnpm-lock.yaml
       - name: install
         working-directory: spa
-        run: npm ci --no-fund --no-audit
+        run: pnpm install --frozen-lockfile
       - name: typecheck
         working-directory: spa
-        run: npx vue-tsc --noEmit
+        run: pnpm exec vue-tsc --noEmit
+      - name: unit tests (vitest)
+        working-directory: spa
+        run: pnpm test
       - name: build
         working-directory: spa
-        run: npm run build
+        run: pnpm run build
 
   sidecar:
-    name: sidecar (syntax + prod install)
+    name: sidecar (format + lint + syntax)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Version comes from sidecar/package.json's packageManager field.
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: sidecar/package.json
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: sidecar/package-lock.json
-      - name: prod install
+          node-version: 26
+          cache: pnpm
+          cache-dependency-path: sidecar/pnpm-lock.yaml
+      - name: install
         working-directory: sidecar
-        run: npm ci --omit=dev --no-fund --no-audit
+        run: pnpm install --frozen-lockfile
+      - name: format + lint (vp check)
+        working-directory: sidecar
+        run: pnpm check
       - name: syntax
         working-directory: sidecar
         run: node --check src/index.js && node --check src/cache.js && node --check src/push.js
 
-  mock-harnesses:
+  # The Playwright regression harnesses run inside the official Playwright
+  # image: browsers + OS deps are baked in, so there is no install step to
+  # hang (the npx playwright install --with-deps step stalled twice on the
+  # runner, 2026-11-24). findChrome resolves browsers via the image's
+  # PLAYWRIGHT_BROWSERS_PATH. The image version must track spa's
+  # playwright-core devDependency (bumped in lockstep).
+  harnesses:
     name: regression harnesses (mock)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: spa/package.json
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: spa/package-lock.json
+          node-version: 26
+          cache: pnpm
+          cache-dependency-path: spa/pnpm-lock.yaml
       - name: install
         working-directory: spa
-        run: npm ci --no-fund --no-audit
-      - name: install chromium
-        working-directory: spa
-        run: npx -y playwright@1.58.0 install chromium --with-deps
+        run: pnpm install --frozen-lockfile
       - name: dev server (mock, :5173)
         working-directory: spa
         run: |
-          npx vite --port 5173 &
+          pnpm exec vite --port 5173 &
           for i in $(seq 1 40); do
             curl -sf -o /dev/null http://localhost:5173 && break
             sleep 2
@@ -74,7 +96,7 @@ jobs:
       - name: dev server (mock, :5174)
         working-directory: spa
         run: |
-          npx vite --port 5174 --host 127.0.0.1 --strictPort &
+          pnpm exec vite --port 5174 --host 127.0.0.1 --strictPort &
           for i in $(seq 1 40); do
             curl -sf -o /dev/null http://127.0.0.1:5174 && break
             sleep 2

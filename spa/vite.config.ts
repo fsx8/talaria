@@ -9,9 +9,11 @@ import { VitePWA } from "vite-plugin-pwa";
 // those to a reachable sidecar (default http://thunderbird:8942, reachable
 // from the compose_default network; override with TALARIA_ORIGIN).
 const sidecarOrigin = process.env.TALARIA_ORIGIN ?? "http://thunderbird:8942";
-const pkgVersion: string = (JSON.parse(
-  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
-) as { version: string }).version;
+const pkgVersion: string = (
+  JSON.parse(
+    readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+  ) as { version: string }
+).version;
 
 export default defineConfig({
   plugins: [
@@ -47,7 +49,12 @@ export default defineConfig({
         // Precache the app shell; never intercept the API or the SSE stream.
         globPatterns: ["**/*.{js,css,html,svg,woff2}"],
         navigateFallback: "index.html",
-        navigateFallbackDenylist: [/^\/api\//, /^\/events$/, /^\/health$/, /^\/push\//],
+        navigateFallbackDenylist: [
+          /^\/api\//,
+          /^\/events$/,
+          /^\/health$/,
+          /^\/push\//,
+        ],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         // Push + notification-click handlers live outside the generated
         // manifest (public/push-sw.js) so the workbox config stays plain.
@@ -71,7 +78,7 @@ export default defineConfig({
     // read-only and serves it immediately — no container restart needed.
     outDir: "../sidecar/public",
     emptyOutDir: true,
-    target: "es2022",
+    target: "es2025",
     sourcemap: false,
   },
 });

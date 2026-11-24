@@ -24,7 +24,7 @@ on your phone.
 browser (Talaria PWA)
    │ HTTPS, behind your authenticating proxy
    ▼
-sidecar  (Node 22 + Fastify, this repo: sidecar/)
+sidecar  (Node.js + Fastify, this repo: sidecar/)
    │  serves the built SPA + PWA assets
    │  POST /api/tools/call  — JSON-RPC proxy to the addon (token stays here)
    │  GET  /events          — SSE: unread-count changes (polling, 60 s)
@@ -50,7 +50,8 @@ Thunderbird anywhere near it (`VITE_BACKEND=mock`).
   **stable token** configured (addon preference
   `extensions.commonpost-mcp.stableAuthToken`). See the addon's README:
   <https://github.com/commonpost/thunderbird-mcp>
-- **Node.js 22** for the sidecar, and for building the SPA.
+- **Node.js 26** for the sidecar, and for building the SPA. Both packages
+  are managed with **pnpm** (the version is pinned in each `package.json`).
 - An authenticating reverse proxy in front of the sidecar — Cloudflare
   Access, Authelia, oauth2-proxy, or a private network you trust. The
   sidecar has **no application-level authentication** by design.
@@ -71,21 +72,21 @@ push (optional — push is disabled without them). Then put the sidecar
 behind your authenticating proxy and open it from a desktop or phone
 browser. `docker compose pull talaria` updates to the latest build.
 
-**From source** (Node.js 22):
+**From source**:
 
 ```sh
 # 1. Build the SPA (writes straight into sidecar/public/)
 cd spa
-npm ci
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 
 # 2. Run the sidecar
 cd ../sidecar
-npm ci
+pnpm install --frozen-lockfile
 COMMONPOST_MCP_TOKEN=<the addon's stable token> \
 TALARIA_VAPID_PUBLIC_KEY=<public key> \
 TALARIA_VAPID_PRIVATE_KEY=<private key> \
-npm start                                # listens on 0.0.0.0:8942
+pnpm start                               # listens on 0.0.0.0:8942
 ```
 
 Environment contract (all sidecar env vars documented in

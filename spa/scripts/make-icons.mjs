@@ -16,7 +16,7 @@ import { chromium } from "playwright-core";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(here, "..", "public");
-const cacheRoot = join(process.env.HOME ?? "/root", ".cache", "ms-playwright");
+const cacheRoot = process.env.PLAYWRIGHT_BROWSERS_PATH ?? join(process.env.HOME ?? "/root", ".cache", "ms-playwright");
 
 function findChrome() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
